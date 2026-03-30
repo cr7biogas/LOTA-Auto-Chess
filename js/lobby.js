@@ -159,7 +159,9 @@ function _lobConnect(onOpenCallback) {
 
     try {
         var protocol = (location.protocol === 'https:') ? 'wss://' : 'ws://';
-        var wsUrl = protocol + location.host;
+        var wsUrl = (typeof MULTIPLAYER_SERVER !== 'undefined' && MULTIPLAYER_SERVER)
+            ? MULTIPLAYER_SERVER
+            : protocol + location.host;
         lobbySocket = new WebSocket(wsUrl);
 
         lobbySocket.onopen = function() {
