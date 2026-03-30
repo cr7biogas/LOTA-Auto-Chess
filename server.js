@@ -553,6 +553,21 @@ wss.on('connection', function(ws) {
             // ACK received
         }
 
+        // Avatar position sync — relay to other players in room
+        if (msg.type === 'avatar_pos' && room.gameStarted && playerEntry.slotId !== null) {
+            var posData = JSON.stringify({
+                type: 'avatar_pos_sync',
+                slot: playerEntry.slotId,
+                wx: msg.wx, wz: msg.wz,
+                row: msg.row, col: msg.col
+            });
+            room.players.forEach(function(p) {
+                if (p.id !== playerId && p.ws.readyState === 1) {
+                    try { p.ws.send(posData); } catch(e) {}
+                }
+            });
+        }
+
         // Dungeon boss killed — sync kill count to all clients
         if (msg.type === 'boss_killed' && room.gameStarted && msg.dungeonId) {
             var did = msg.dungeonId;

@@ -585,6 +585,22 @@ function updateAvatarMovement(dt) {
     // Store smooth pos on avatar for 3D model to use
     avatar._smoothWX = _avatarWX;
     avatar._smoothWZ = _avatarWZ;
+
+    // ── Multiplayer: send avatar position to server ──
+    if (!window._singlePlayerMode && typeof lobbySocket !== 'undefined' && lobbySocket && lobbySocket.readyState === 1) {
+        if (!window._lastAvatarSync) window._lastAvatarSync = 0;
+        var now = performance.now();
+        if (now - window._lastAvatarSync > 80) { // ~12 times per second
+            window._lastAvatarSync = now;
+            lobbySocket.send(JSON.stringify({
+                type: 'avatar_pos',
+                wx: Math.round(_avatarWX * 100) / 100,
+                wz: Math.round(_avatarWZ * 100) / 100,
+                row: avatar.row,
+                col: avatar.col
+            }));
+        }
+    }
 }
 
 function updateFPVCamera(dt) {

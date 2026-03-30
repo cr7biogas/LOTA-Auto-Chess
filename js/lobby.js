@@ -275,6 +275,20 @@ function _lobConnect(onOpenCallback) {
                 }
             }
 
+            // Remote avatar position sync
+            if (msg.type === 'avatar_pos_sync' && typeof combatUnits !== 'undefined') {
+                var remoteSlot = msg.slot;
+                for (var _api = 0; _api < combatUnits.length; _api++) {
+                    if (combatUnits[_api].isAvatar && combatUnits[_api].owner === remoteSlot) {
+                        combatUnits[_api]._smoothWX = msg.wx;
+                        combatUnits[_api]._smoothWZ = msg.wz;
+                        combatUnits[_api].row = msg.row;
+                        combatUnits[_api].col = msg.col;
+                        break;
+                    }
+                }
+            }
+
             // Dungeon boss kill sync from server
             if (msg.type === 'boss_kill_sync' && msg.dungeonBossKills) {
                 if (typeof globalDungeonBossKills !== 'undefined') {
