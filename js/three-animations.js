@@ -36,6 +36,7 @@ function _ensureEmissiveCache(g, entry) {
 
 function spawnUnitModel3D(unit) {
     if (threeUnitModels[unit.id]) return; // already exists
+    console.log('[3D-SPAWN] Creating model for ' + unit.charId + ' (id=' + unit.id + ', owner=' + unit.owner + ', row=' + unit.row + ', col=' + unit.col + ')');
     var group = createCharacterModel3D(unit.charId, unit);
 
     // ── Bounding-box feet placement ──
@@ -119,6 +120,25 @@ function spawnUnitModel3D(unit) {
     if (unit.charId && unit.charId.startsWith('boss_') && group._gltfAnimations && group._gltfAnimations.length > 0) {
         // animation debug removed
         _initializeDungeonBossAnimations(unit, group, entry);
+    }
+
+    // Add beacon pillar above other players' avatars (tall colored light column)
+    if (unit.isAvatar && typeof TEAM_COLORS !== 'undefined' && TEAM_COLORS[ownerIdx]) {
+        var beaconCol = TEAM_COLORS[ownerIdx].primary || '#ffffff';
+        var beaconGeo = new THREE.CylinderGeometry(0.03, 0.08, 3.0, 6);
+        var beaconMat = new THREE.MeshBasicMaterial({ color: beaconCol, transparent: true, opacity: 0.5, depthWrite: false });
+        var beacon = new THREE.Mesh(beaconGeo, beaconMat);
+        beacon.position.set(0, 1.8, 0);
+        beacon.name = 'avatar_beacon';
+        group.add(beacon);
+        // Glow sphere at top
+        var beaconTip = new THREE.Mesh(
+            new THREE.SphereGeometry(0.12, 8, 8),
+            new THREE.MeshBasicMaterial({ color: beaconCol, transparent: true, opacity: 0.8 })
+        );
+        beaconTip.position.set(0, 3.3, 0);
+        beaconTip.name = 'avatar_beacon_tip';
+        group.add(beaconTip);
     }
 
     threeUnitModels[unit.id] = entry;
