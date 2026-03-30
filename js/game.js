@@ -579,6 +579,7 @@ function applyServerUnitsAndStartCombat(allUnits) {
 
     var myServerSlot = (window.mySlotId !== null && window.mySlotId !== undefined) ? window.mySlotId : 0;
     var s2l = window.serverToLocal || {};
+    console.log('[MP-DEBUG] applyServerUnits: mySlot=' + myServerSlot + ' s2l=' + JSON.stringify(s2l) + ' allUnits keys=' + Object.keys(allUnits) + ' round=' + currentRound);
 
     for (var serverSlotStr in allUnits) {
         var serverSlot = parseInt(serverSlotStr);
@@ -627,7 +628,8 @@ function applyServerUnitsAndStartCombat(allUnits) {
 
         players[localSlot].fieldUnits = remoteFieldUnits;
         if (remoteMilitia.length > 0) players[localSlot].militiaUnits = remoteMilitia;
-        console.log('[Game] Server slot ' + serverSlot + ' → local slot ' + localSlot + ': ' + remoteFieldUnits.length + ' units, ' + remoteMilitia.length + ' militia' + (remoteAvatar ? ', avatar' : ''));
+        console.log('[MP-DEBUG] Slot ' + serverSlot + '→local' + localSlot + ': ' + serverUnits.length + ' raw, ' + remoteFieldUnits.length + ' field, ' + remoteMilitia.length + ' militia, avatar=' + (remoteAvatar ? remoteAvatar.avatarClass : 'NONE'));
+        console.log('[MP-DEBUG] Raw units received:', JSON.stringify(serverUnits.map(function(u){return {charId:u.charId, isAvatar:u.isAvatar, militiaType:u.militiaType, row:u.row, col:u.col};})));
     }
 
     // AI slots with no data: place AI units

@@ -1212,6 +1212,9 @@ function initCombat(playersList, creepUnits, campCreeps) {
         }
     }
 
+    // Debug: log team sizes
+    for (var tk in teams) { console.log('[MP-DEBUG] initCombat team ' + tk + ': ' + teams[tk].length + ' units → ' + teams[tk].map(function(u){return u.charId;}).join(', ')); }
+
     // Add creep units if PvE
     if (creepUnits && creepUnits.length > 0) {
         teams['creep'] = [];
