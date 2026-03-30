@@ -537,9 +537,18 @@ function onPlayerReady() {
     if (typeof lobbySocket !== 'undefined' && lobbySocket && lobbySocket.readyState === 1 && !window._singlePlayerMode) {
         var myPlayer = players[0]; // players[0] is always the local human
 
-        // Serialize own field units
-        var unitsToSend = (myPlayer.fieldUnits || []).map(function(u) {
-            return { charId: u.charId, star: u.star, row: u.row, col: u.col, items: u.items || [], learnedSkills: u.learnedSkills || {}, equippedSkills: u.equippedSkills || [] };
+        // Serialize own field units + militia + avatar
+        var allMyUnits = (myPlayer.fieldUnits || []).concat(myPlayer.militiaUnits || []);
+        if (myPlayer.avatar && myPlayer.avatar.alive && !myPlayer.avatar._needsRespawn) {
+            allMyUnits.push(myPlayer.avatar);
+        }
+        var unitsToSend = allMyUnits.map(function(u) {
+            return { charId: u.charId, star: u.star, row: u.row, col: u.col, items: u.items || [],
+                     learnedSkills: u.learnedSkills || {}, equippedSkills: u.equippedSkills || [],
+                     isAvatar: !!u.isAvatar, avatarClass: u.avatarClass || null,
+                     militiaType: u.militiaType || null,
+                     hp: u.hp, maxHp: u.maxHp, atk: u.atk, armor: u.armor,
+                     range: u.range, atkSpeed: u.atkSpeed, level: u.level || 1 };
         });
 
         console.log('[Game] Sending ' + unitsToSend.length + ' units + player_ready to server');
@@ -580,24 +589,45 @@ function applyServerUnitsAndStartCombat(allUnits) {
         if (!players[localSlot] || players[localSlot].eliminated) continue;
 
         var serverUnits = allUnits[serverSlotStr] || [];
-        players[localSlot].fieldUnits = serverUnits.map(function(u) {
-            // owner = serverSlot (fixed, consistent across clients)
-            var unit = createUnit(u.charId, u.star, serverSlot, u.row, u.col);
-            unit.items = u.items || [];
-            if (u.learnedSkills) unit.learnedSkills = u.learnedSkills;
-            if (u.equippedSkills) unit.equippedSkills = u.equippedSkills;
-            var pos = cellToPixel(u.row, u.col);
-            unit.px = pos.x; unit.py = pos.y;
-            return unit;
-        });
-        // Spawn 3D models for remote players' units
-        for (var j = 0; j < players[localSlot].fieldUnits.length; j++) {
-            var remoteUnit = players[localSlot].fieldUnits[j];
-            if (typeof spawnUnitModel3D === 'function' && typeof threeUnitModels !== 'undefined' && !threeUnitModels[remoteUnit.id]) {
-                spawnUnitModel3D(remoteUnit);
+        var remoteFieldUnits = [];
+        var remoteMilitia = [];
+        var remoteAvatar = null;
+
+        for (var j = 0; j < serverUnits.length; j++) {
+            var u = serverUnits[j];
+            if (u.isAvatar && u.avatarClass) {
+                // Rebuild avatar for remote player
+                if (!players[localSlot].avatar) {
+                    players[localSlot].avatar = createAvatar(u.avatarClass, serverSlot);
+                }
+                var av = players[localSlot].avatar;
+                av.row = u.row; av.col = u.col;
+                av.hp = u.hp || av.hp; av.maxHp = u.maxHp || av.maxHp;
+                av.atk = u.atk || av.atk; av.level = u.level || av.level;
+                var avPos = cellToPixel(u.row, u.col);
+                av.px = avPos.x; av.py = avPos.y;
+                remoteAvatar = av;
+            } else if (u.militiaType) {
+                var mUnit = createUnit(u.charId, u.star, serverSlot, u.row, u.col);
+                mUnit.militiaType = u.militiaType;
+                mUnit.items = u.items || [];
+                var mPos = cellToPixel(u.row, u.col);
+                mUnit.px = mPos.x; mUnit.py = mPos.y;
+                remoteMilitia.push(mUnit);
+            } else {
+                var unit = createUnit(u.charId, u.star, serverSlot, u.row, u.col);
+                unit.items = u.items || [];
+                if (u.learnedSkills) unit.learnedSkills = u.learnedSkills;
+                if (u.equippedSkills) unit.equippedSkills = u.equippedSkills;
+                var pos = cellToPixel(u.row, u.col);
+                unit.px = pos.x; unit.py = pos.y;
+                remoteFieldUnits.push(unit);
             }
         }
-        console.log('[Game] Server slot ' + serverSlot + ' → local slot ' + localSlot + ': ' + players[localSlot].fieldUnits.length + ' units (3D spawned)');
+
+        players[localSlot].fieldUnits = remoteFieldUnits;
+        if (remoteMilitia.length > 0) players[localSlot].militiaUnits = remoteMilitia;
+        console.log('[Game] Server slot ' + serverSlot + ' → local slot ' + localSlot + ': ' + remoteFieldUnits.length + ' units, ' + remoteMilitia.length + ' militia' + (remoteAvatar ? ', avatar' : ''));
     }
 
     // AI slots with no data: place AI units
