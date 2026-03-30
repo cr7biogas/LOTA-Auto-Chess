@@ -217,9 +217,10 @@ function _getAvatarForSpecial() {
     if (typeof players === 'undefined' || !players[0]) return null;
     var p = players[0];
     if (!p.avatar || !p.avatar.alive) return null;
+    var mySlot = (window.mySlotId !== null && window.mySlotId !== undefined) ? window.mySlotId : 0;
     if (typeof combatUnits !== 'undefined') {
         for (var i = 0; i < combatUnits.length; i++) {
-            if (combatUnits[i].isAvatar && combatUnits[i].owner === 0 && combatUnits[i].alive) {
+            if (combatUnits[i].isAvatar && combatUnits[i].owner === mySlot && combatUnits[i].alive) {
                 return combatUnits[i];
             }
         }

@@ -405,9 +405,10 @@ function _initMouseLook() {
 }
 
 function _getAvatarForCamera() {
+    var mySlot = (window.mySlotId !== null && window.mySlotId !== undefined) ? window.mySlotId : 0;
     if (typeof combatUnits !== 'undefined' && typeof gamePhase !== 'undefined' && (gamePhase === PHASE_COMBAT || gamePhase === PHASE_RESULT)) {
         for (var i = 0; i < combatUnits.length; i++) {
-            if (combatUnits[i].isAvatar && combatUnits[i].owner === 0 && combatUnits[i].alive) return combatUnits[i];
+            if (combatUnits[i].isAvatar && combatUnits[i].owner === mySlot && combatUnits[i].alive) return combatUnits[i];
         }
     }
     if (typeof players !== 'undefined' && getHumanPlayer() && getHumanPlayer().avatar && getHumanPlayer().avatar.alive) {

@@ -728,8 +728,9 @@ var _avatarAttackTarget = null;
 
 function _getHumanAvatarInCombat() {
     if (typeof combatUnits === 'undefined') return null;
+    var mySlot = (window.mySlotId !== null && window.mySlotId !== undefined) ? window.mySlotId : 0;
     for (var i = 0; i < combatUnits.length; i++) {
-        if (combatUnits[i].isAvatar && combatUnits[i].owner === 0 && combatUnits[i].alive) return combatUnits[i];
+        if (combatUnits[i].isAvatar && combatUnits[i].owner === mySlot && combatUnits[i].alive) return combatUnits[i];
     }
     return null;
 }
