@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LOTA AUTO CHESS</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<script>
+// Polyfills for older mobile browsers
+if(!Array.prototype.includes){Array.prototype.includes=function(v,i){return this.indexOf(v,i||0)!==-1;};}
+if(!Array.prototype.find){Array.prototype.find=function(fn){for(var i=0;i<this.length;i++){if(fn(this[i],i,this))return this[i];};};}
+if(!Array.prototype.some){Array.prototype.some=function(fn){for(var i=0;i<this.length;i++){if(fn(this[i],i,this))return true;}return false;};}
+if(!String.prototype.includes){String.prototype.includes=function(s,p){return this.indexOf(s,p||0)!==-1;};}
+if(!String.prototype.repeat){String.prototype.repeat=function(n){return new Array(n+1).join(this);};}
+// Global error handler — show on screen for mobile debug
+window.onerror=function(msg,src,line){
+    var d=document.getElementById('lobby-error');
+    if(!d){d=document.createElement('div');d.id='lobby-error';d.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#1a0000;color:#ef4444;font:12px monospace;padding:8px;z-index:99999;max-height:30vh;overflow:auto;';document.body.appendChild(d);}
+    var entry=document.createElement('div');entry.textContent=msg+' ('+src.split('/').pop()+':'+line+')';d.appendChild(entry);
+};
+</script>
+
+<!-- Canvas for board + combat rendering -->
+<canvas id="game-canvas"></canvas>
+
+<!-- HUD (top bar) -->
+<div id="hud">
+    <div class="hud-section">
+        <div class="hud-item">
+            <span class="hud-label">Round</span>
+            <span class="hud-value hud-round" id="hud-round">1</span>
+            <span class="hud-label">/ 50</span>
+        </div>
+        <div class="hud-item">
+            <span class="hud-phase" id="hud-phase">PLANNING</span>
+        </div>
+        <div class="hud-item" id="hud-timer-wrap" style="display:none">
+            <span class="hud-label">Timer</span>
+            <span class="hud-value" id="hud-timer">30</span>
+        </div>
+    </div>
+    <div class="hud-section">
+        <div class="hud-item">
+            <span class="hud-label">Oro</span>
+            <span class="hud-value hud-gold" id="hud-gold">0</span>
+        </div>
+        <div class="hud-item">
+            <span class="hud-label">HP</span>
+            <span class="hud-value hud-hp" id="hud-hp">30</span>
+            <span class="hud-label">/ 30</span>
+        </div>
+        <div class="hud-item">
+            <span class="hud-label">Totale Oro</span>
+            <span class="hud-value hud-gold" id="hud-total-gold">0</span>
+        </div>
+    </div>
+    <div class="hud-section">
+        <div class="hud-item" id="hud-synergies"></div>
+        <button id="btn-fullscreen" title="Schermo intero" onclick="toggleFullscreen()">&#x26F6;</button>
+    </div>
+</div>
+
+<!-- Loading Screen -->
+<div id="loading-overlay" class="overlay">
+    <div class="loading-content">
+        <div class="loading-title">PREPARAZIONE ARENA</div>
+        <div class="loading-bar-wrap"><div class="loading-bar-fill" id="loading-bar"></div></div>
+        <div class="loading-text" id="loading-text">Caricamento modelli...</div>
+    </div>
+</div>
+
+<!-- Lobby Overlay (multiplayer) -->
+<div id="lobby-overlay" class="overlay">
+    <img src="lobby-yujin.jpg" class="lobby-char-img lobby-char-left" alt="Yujin">
+    <div class="lobby-container">
+        <div class="lobby-title">LOTA AUTO CHESS</div>
+        <div class="lobby-subtitle">Lobby Multiplayer</div>
+        <div id="lobby-room-code" class="lobby-room-code" style="display:none;">
+            <div class="lobby-room-code-label">Codice Stanza</div>
+            <div class="lobby-room-code-value" id="lobby-room-code-value" title="Clicca per copiare"></div>
+            <div class="lobby-room-code-hint">Condividi questo codice con i tuoi amici</div>
+        </div>
+        <div class="lobby-status-bar">
+            <span id="lobby-status">Connessione...</span>
+            <span id="lobby-player-count"></span>
+        </div>
+        <div class="lobby-name-row">
+            <label for="lobby-name-input">Il tuo nome:</label>
+            <input type="text" id="lobby-name-input" maxlength="20" placeholder="Inserisci nome...">
+        </div>
+        <div id="lobby-player-list" class="lobby-player-list"></div>
+        <div class="lobby-actions">
+            <button class="btn lobby-btn" id="lobby-ready-btn">Pronto!</button>
+            <button class="btn lobby-btn btn-gold" id="lobby-start-btn" style="display:none">Avvia Partita</button>
+        </div>
+    </div>
+    <img src="lobby-caronte.jpg" class="lobby-char-img lobby-char-right" alt="Caronte">
+</div>
+
+<!-- Menu Overlay (local / fallback) -->
+<div id="menu-overlay" class="overlay active">
+    <div class="menu-title">LOTA AUTO CHESS</div>
+    <div class="menu-subtitle">Auto-battler v2.1 — Arena Ottagonale</div>
+    <div class="menu-buttons">
+        <button class="btn" id="btn-start">Gioca Offline</button>
+        <button class="btn btn-gold" id="btn-host-room">Ospita Partita</button>
+        <div class="menu-join-row">
+            <input type="text" id="join-room-code" maxlength="6" placeholder="Codice stanza" style="text-transform:uppercase;">
+            <button class="btn" id="btn-join-room">Unisciti</button>
+        </div>
+    </div>
+</div>
+
+<!-- Draft Overlay -->
+<div id="draft-overlay" class="overlay">
+    <div class="draft-title">DRAFT — Scegli una carta</div>
+    <div class="draft-cards" id="draft-cards"></div>
+    <div id="draft-bench" class="draft-bench"></div>
+</div>
+
+<!-- Result Overlay -->
+<div id="result-overlay" class="overlay">
+    <div class="result-title" id="result-title"></div>
+    <div class="result-details" id="result-details"></div>
+    <button class="btn" id="btn-continue">Continua</button>
+</div>
+
+<!-- Game Over Overlay -->
+<div id="gameover-overlay" class="overlay">
+    <div class="gameover-title" id="gameover-title">PARTITA FINITA</div>
+    <div class="gameover-stats" id="gameover-stats"></div>
+    <button class="btn btn-gold" id="btn-restart">Nuova Partita</button>
+</div>
+
+<!-- Unit Roster (always visible above bench) -->
+<div id="unit-roster"></div>
+
+<!-- Bench (bottom bar) -->
+<div id="bench-panel">
+    <div class="bench-slot" data-slot="0"></div>
+    <div class="bench-slot" data-slot="1"></div>
+    <div class="bench-slot locked" data-slot="2"></div>
+</div>
+
+<!-- Side Panel (right) -->
+<div id="side-panel">
+    <!-- Selected unit info (always visible above tabs) -->
+    <div id="selected-unit-section" class="panel-section" style="display:none">
+        <div id="selected-unit-panel"></div>
+    </div>
+
+    <!-- Tab bar -->
+    <div id="sp-tabs">
+        <button class="sp-tab active" data-tab="gioco">Gioco</button>
+        <button class="sp-tab" data-tab="armata">Armata</button>
+        <button class="sp-tab" data-tab="zaino">Zaino</button>
+    </div>
+
+    <!-- Tab: Gioco (Players, Synergies, Economy) -->
+    <div class="sp-tab-content active" id="sp-tab-gioco">
+        <div class="panel-section">
+            <div class="panel-section-title">Giocatori</div>
+            <div id="player-list"></div>
+        </div>
+        <div class="panel-section">
+            <div class="panel-section-title">Sinergie</div>
+            <div id="synergy-list"></div>
+        </div>
+        <div class="panel-section">
+            <div class="panel-section-title">Azioni</div>
+            <div id="economy-actions"></div>
+        </div>
+    </div>
+
+    <!-- Tab: Armata (Militia, Structures, Special) -->
+    <div class="sp-tab-content" id="sp-tab-armata">
+        <div class="panel-section" id="special-section">
+            <div class="panel-section-title">Attacco Speciale</div>
+            <div id="special-upgrade-list"></div>
+        </div>
+        <div class="panel-section" id="militia-section">
+            <div class="panel-section-title">Milizia</div>
+            <div id="militia-list"></div>
+        </div>
+        <div class="panel-section" id="structure-section">
+            <div class="panel-section-title">Strutture</div>
+            <div id="structure-list"></div>
+        </div>
+        <div class="panel-section" id="building-section">
+            <div class="panel-section-title">Edifici</div>
+            <div id="building-list"></div>
+        </div>
+    </div>
+
+    <!-- Tab: Zaino (Items, Consumables, Shop) -->
+    <div class="sp-tab-content" id="sp-tab-zaino">
+        <div class="panel-section">
+            <div class="panel-section-title">Inventario Items</div>
+            <div id="item-inventory"></div>
+        </div>
+        <div class="panel-section" id="consumable-section">
+            <div class="panel-section-title">Consumabili</div>
+            <div id="consumable-list"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Planning Actions -->
+<div id="planning-actions">
+    <button class="btn" id="btn-ready">Pronto!</button>
+</div>
+
+<!-- Combat Controls -->
+<div id="combat-controls">
+    <button class="btn" id="btn-speed" title="Velocita combat">1x</button>
+</div>
+
+<!-- Avatar HUD (abilities bar, bottom-center during combat) -->
+<div id="avatar-hud"></div>
+
+<!-- Phase Banner -->
+<div id="phase-banner">
+    <div id="phase-banner-title"></div>
+    <div id="phase-banner-sub"></div>
+</div>
+
+<!-- Toast Notifications -->
+<div id="toast-container"></div>
+
+<!-- Combat Log -->
+<div id="combat-log">
+    <div class="combat-log-header">
+        <span class="combat-log-title">Combat Log</span>
+        <button id="combat-log-toggle" title="Nascondi/Mostra">▼</button>
+    </div>
+    <div id="combat-log-scroll">
+        <div id="combat-log-entries"></div>
+    </div>
+</div>
+
+<!-- Unit Info Card -->
+<div id="unit-info-card"></div>
+
+<!-- Tactical Order Menu (right-click on field unit during planning) -->
+<div id="order-menu" class="order-menu"></div>
+<div id="order-select-prompt" class="order-select-prompt">Clicca su un alleato per assegnare il bersaglio</div>
+
+<!-- Skill Combat Menu (right-click on unit during combat) -->
+<div id="skill-menu" class="skill-menu"></div>
+<div id="skill-target-prompt" class="order-select-prompt">Seleziona un bersaglio per la skill</div>
+
+<!-- Skill Equip Panel (planning phase, shown when unit selected) -->
+<div id="skill-equip-panel" class="skill-equip-panel"></div>
+
+<!-- Tooltip -->
+<div id="tooltip">
+    <div class="tooltip-name" id="tooltip-name"></div>
+    <div class="tooltip-class" id="tooltip-class"></div>
+    <div id="tooltip-stats"></div>
+</div>
+
+<!-- Three.js 3D Engine -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+
+<!-- Import Map for ES Module Resolution -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<!-- GLTFLoader + SkeletonUtils (ES Module) -->
+<script type="module">
+  import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+  import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+  import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
+  import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+  window.GLTFLoader = GLTFLoader;
+  window.OBJLoader = OBJLoader;
+  window.MTLLoader = MTLLoader;
+  window.SkeletonUtils = SkeletonUtils;
+  if (typeof THREE !== 'undefined') THREE.GLTFLoader = GLTFLoader;
+  window._esModulesReady = true;
+  window.dispatchEvent(new Event('es-modules-ready'));
+  console.log('✓ GLTFLoader + OBJLoader + SkeletonUtils ready');
+</script>
+
+<!-- Scripts (dependency order) -->
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/board.js"></script>
+<script src="js/units.js"></script>
+<script src="js/combat.js"></script>
+<script src="js/skills.js"></script>
+<script src="js/items.js"></script>
+<script src="js/synergies.js"></script>
+<script src="js/economy.js"></script>
+<script src="js/draft.js"></script>
+<script src="js/creeps.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/persistence.js"></script>
+<script src="js/militia.js"></script>
+<script src="js/turrets.js"></script>
+<script src="js/avatar.js"></script>
+<script src="js/specials.js"></script>
+<script src="js/vfx.js"></script>
+<script src="js/commandui.js"></script>
+<script src="js/characters.js"></script>
+<script src="js/buildings.js"></script>
+
+<!-- Three.js game layer (after config+board, before render) -->
+<script src="js/three-setup.js"></script>
+<script src="js/three-environment.js"></script>
+<script src="js/three-scenery.js"></script>
+<script src="js/three-board.js"></script>
+<script src="js/three-models.js"></script>
+<script src="js/three-hpbars.js"></script>
+<script src="js/three-animations.js"></script>
+<script src="js/three-body-anims.js"></script>
+<script src="js/three-upgrades.js"></script>
+<script src="js/three-vfx.js"></script>
+<script src="js/three-skill-models.js"></script>
+<script src="js/three-skill-vfx.js"></script>
+<script src="js/three-overlays.js"></script>
+<script src="js/three-buildings.js"></script>
+<script src="js/three-specials-vfx.js"></script>
+
+<script src="js/render.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/game.js"></script>
+<script src="js/lobby.js"></script>
+
+</body>
+</html>
