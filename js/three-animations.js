@@ -750,12 +750,31 @@ function updateAnimations3D(dt, units) {
             _tmpVec3.set(_cw.x, _unitY, _cw.z);
         }
         entry.targetPos.copy(_tmpVec3);
-        g.position.lerp(entry.targetPos, unit.isAvatar ? 0.25 : 0.08);
+        // Snap-step movement: fast lerp so units arrive quickly and idle cleanly
+        var _moveDist = g.position.distanceTo(entry.targetPos);
+        if (_moveDist < 0.03) {
+            // Close enough — snap to grid, no micro-sliding
+            g.position.copy(entry.targetPos);
+        } else {
+            g.position.lerp(entry.targetPos, unit.isAvatar ? 0.25 : 0.22);
+        }
 
         // ---- rotation ----
-        if (unit.isAvatar && typeof _camOrbitAngle !== 'undefined') {
+        var _mySlotAnim = (typeof window !== 'undefined' && window.mySlotId !== null && window.mySlotId !== undefined) ? window.mySlotId : 0;
+        if (unit.isAvatar && unit.owner === _mySlotAnim && typeof _camOrbitAngle !== 'undefined') {
+            // Local avatar: use camera orbit angle
             var _meshOff = (g._modelYRotOffset !== undefined) ? g._modelYRotOffset : 0;
             g.rotation.set(0, _camOrbitAngle + Math.PI - _meshOff, 0);
+        } else if (unit.isAvatar && unit._remoteFacing !== undefined) {
+            // Remote avatar: use synced facing angle
+            var _meshOff2 = (g._modelYRotOffset !== undefined) ? g._modelYRotOffset : 0;
+            var _targetRot = unit._remoteFacing + Math.PI - _meshOff2;
+            // Smooth rotation lerp
+            var _curRot = g.rotation.y;
+            var _diff = _targetRot - _curRot;
+            while (_diff > Math.PI) _diff -= Math.PI * 2;
+            while (_diff < -Math.PI) _diff += Math.PI * 2;
+            g.rotation.set(0, _curRot + _diff * 0.15, 0);
         } else {
             // Non-avatar: slerp — zero allocazioni, usa temp pre-allocati
             _tmpVec3.set(BOARD_CX, g.position.y, BOARD_CZ);
@@ -769,7 +788,7 @@ function updateAnimations3D(dt, units) {
             g.lookAt(_tmpVec3);
             _tmpQuat2.copy(g.quaternion);
             g.quaternion.copy(_tmpQuat1);
-            g.quaternion.slerp(_tmpQuat2, 0.08);
+            g.quaternion.slerp(_tmpQuat2, 0.18);
         }
 
         // ======== DEATH — spectacular KO ========

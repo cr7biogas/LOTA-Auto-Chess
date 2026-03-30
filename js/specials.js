@@ -728,8 +728,10 @@ function _executeStregoneMarchio(avatar, def) {
                 e.hp -= dmg;
                 if (e.hp <= 0) { e.hp = 0; e.alive = false; }
                 if (typeof addDamageNumber === 'function') addDamageNumber(e, dmg, isCrit ? 'crit' : 'magic');
-                if (stunTicks > 0) e.effects.push({ type: 'freeze', value: 0, ticksLeft: stunTicks, stacking: 'refresh' });
-                if (burnDur > 0) e.effects.push({ type: 'poison', value: Math.round(e.maxHp * 0.03), ticksLeft: 2 + burnDur, stacking: 'refresh', sourceType: 'burn' });
+                var _mEfx = [];
+                if (stunTicks > 0) { e.effects.push({ type: 'freeze', value: 0, ticksLeft: stunTicks, stacking: 'refresh' }); _mEfx.push({ type: 'freeze', ticksLeft: stunTicks }); }
+                if (burnDur > 0) { e.effects.push({ type: 'poison', value: Math.round(e.maxHp * 0.03), ticksLeft: 2 + burnDur, stacking: 'refresh', sourceType: 'burn' }); _mEfx.push({ type: 'poison', ticksLeft: 2 + burnDur }); }
+                if (typeof _mpSyncDamage === 'function') _mpSyncDamage(e.id, dmg, isCrit, 'magic', _mEfx);
                 hitCount++;
             }
         }

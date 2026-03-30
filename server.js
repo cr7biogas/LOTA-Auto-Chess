@@ -553,13 +553,37 @@ wss.on('connection', function(ws) {
             // ACK received
         }
 
+        // Combat event sync — relay damage/heal/effects to other players
+        if (msg.type === 'combat_event' && room.gameStarted && playerEntry.slotId !== null) {
+            var ceData = JSON.stringify({
+                type: 'combat_event_sync',
+                fromSlot: playerEntry.slotId,
+                event: msg.event,
+                targetId: msg.targetId,
+                unitId: msg.unitId,
+                damage: msg.damage,
+                amount: msg.amount,
+                isCrit: msg.isCrit,
+                dmgType: msg.dmgType,
+                effects: msg.effects,
+                abilityId: msg.abilityId,
+                targets: msg.targets
+            });
+            room.players.forEach(function(p) {
+                if (p.id !== playerId && p.ws.readyState === 1) {
+                    try { p.ws.send(ceData); } catch(e) {}
+                }
+            });
+        }
+
         // Avatar position sync — relay to other players in room
         if (msg.type === 'avatar_pos' && room.gameStarted && playerEntry.slotId !== null) {
             var posData = JSON.stringify({
                 type: 'avatar_pos_sync',
                 slot: playerEntry.slotId,
                 wx: msg.wx, wz: msg.wz,
-                row: msg.row, col: msg.col
+                row: msg.row, col: msg.col,
+                facing: msg.facing
             });
             room.players.forEach(function(p) {
                 if (p.id !== playerId && p.ws.readyState === 1) {

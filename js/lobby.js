@@ -275,6 +275,49 @@ function _lobConnect(onOpenCallback) {
                 }
             }
 
+            // Remote combat events (damage/heal/effects from other players' avatars)
+            if (msg.type === 'combat_event_sync' && typeof combatUnits !== 'undefined') {
+                if (msg.event === 'damage' && msg.targetId !== undefined) {
+                    for (var _cei = 0; _cei < combatUnits.length; _cei++) {
+                        if (combatUnits[_cei].id === msg.targetId) {
+                            var _ct = combatUnits[_cei];
+                            _ct.hp -= msg.damage;
+                            if (_ct.hp <= 0) { _ct.hp = 0; _ct.alive = false; }
+                            if (typeof addDamageNumber === 'function') addDamageNumber(_ct, msg.damage, msg.isCrit ? 'crit' : msg.dmgType);
+                            // Apply effects
+                            if (msg.effects) {
+                                for (var _efi = 0; _efi < msg.effects.length; _efi++) {
+                                    var eff = msg.effects[_efi];
+                                    _ct.effects.push({ type: eff.type, value: eff.value || 0, ticksLeft: eff.ticksLeft || 1, stacking: 'refresh' });
+                                }
+                            }
+                            // Impact VFX
+                            var _ceX = _ct._smoothWX !== undefined ? _ct._smoothWX : (typeof cellToWorld === 'function' ? cellToWorld(_ct.row, _ct.col).x : _ct.col);
+                            var _ceZ = _ct._smoothWZ !== undefined ? _ct._smoothWZ : (typeof cellToWorld === 'function' ? cellToWorld(_ct.row, _ct.col).z : _ct.row);
+                            var _ceY = typeof UNIT_BASE_Y !== 'undefined' ? UNIT_BASE_Y : 0.15;
+                            if (typeof _burst3D === 'function') _burst3D(_ceX, _ceY + 0.3, _ceZ, msg.isCrit ? 10 : 5, msg.dmgType === 'magic' ? '#a855f7' : '#ff6666', 3.0, 0.20);
+                            break;
+                        }
+                    }
+                } else if (msg.event === 'heal' && msg.targetId !== undefined) {
+                    for (var _chi = 0; _chi < combatUnits.length; _chi++) {
+                        if (combatUnits[_chi].id === msg.targetId) {
+                            combatUnits[_chi].hp = Math.min(combatUnits[_chi].maxHp, combatUnits[_chi].hp + msg.amount);
+                            if (typeof addDamageNumber === 'function') addDamageNumber(combatUnits[_chi], msg.amount, 'heal');
+                            break;
+                        }
+                    }
+                } else if (msg.event === 'death' && msg.unitId !== undefined) {
+                    for (var _cdi = 0; _cdi < combatUnits.length; _cdi++) {
+                        if (combatUnits[_cdi].id === msg.unitId) {
+                            combatUnits[_cdi].hp = 0;
+                            combatUnits[_cdi].alive = false;
+                            break;
+                        }
+                    }
+                }
+            }
+
             // Remote avatar position sync
             if (msg.type === 'avatar_pos_sync' && typeof combatUnits !== 'undefined') {
                 var remoteSlot = msg.slot;
@@ -284,6 +327,7 @@ function _lobConnect(onOpenCallback) {
                         combatUnits[_api]._smoothWZ = msg.wz;
                         combatUnits[_api].row = msg.row;
                         combatUnits[_api].col = msg.col;
+                        if (msg.facing !== undefined) combatUnits[_api]._remoteFacing = msg.facing;
                         break;
                     }
                 }

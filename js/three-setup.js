@@ -142,13 +142,13 @@ function initThreeScene() {
 
 // === Camera Control State ===
 var CAM_F_BASE     = 28;       // base frustum half-size
-var CAM_ZOOM       = 1.0;      // 1.0 = default view
-var CAM_ZOOM_MIN   = 0.35;     // max zoom in
-var CAM_ZOOM_MAX   = 1.5;      // max zoom out
-var CAM_ZOOM_SPEED = 0.08;
+var CAM_ZOOM       = 0.55;     // start zoomed in on base (models visible)
+var CAM_ZOOM_MIN   = 0.25;     // max zoom in (very close)
+var CAM_ZOOM_MAX   = 1.5;      // max zoom out (full map)
+var CAM_ZOOM_SPEED = 0.06;
 var CAM_PAN_X      = 0;        // world-space offset
 var CAM_PAN_Z      = 0;
-var CAM_PAN_LIMIT  = 20;       // max pan distance from center
+var CAM_PAN_LIMIT  = 40;       // max pan distance from center (full map reach)
 var CAM_PAN_SPEED  = 0.5;      // WASD pan speed per frame
 var _keysDown      = {};       // currently pressed keys
 var _camPitch      = Math.PI / 5.5;
@@ -166,7 +166,10 @@ function applyCameraRotationForSlot(serverSlot) {
     var rotation = rotations[serverSlot] || 0;
     _camBaseYaw = Math.PI / 4 + rotation;
     _camYaw = _camBaseYaw;
-    if (threeCamera) _applyCameraTransform();
+    // Start zoomed in above the player's base
+    CAM_ZOOM = 0.55;
+    panCameraToPlayerBase(serverSlot);
+    if (threeCamera) _updateCameraFrustum();
     console.log('[Camera] Rotated for slot ' + serverSlot + ': yaw=' + _camYaw.toFixed(2));
 }
 
@@ -237,11 +240,16 @@ function _updateCameraFrustum() {
     _applyCameraTransform();
 }
 
-// Called every frame from render loop — WASD camera pan
+// Called every frame from render loop — WASD pan + Q/E rotation
 function updateCameraEdgeScroll(dt) {
     if (!threeCamera) return;
     // When avatar follow cam is active during combat, WASD belongs to avatar movement — skip pan
     if (!_tacticalView && typeof gamePhase !== 'undefined' && gamePhase === PHASE_COMBAT) return;
+
+    // Q / E — rotate tactical camera
+    var rotSpeed = 1.5; // rad/s
+    if (_keysDown['q']) { _camYaw += rotSpeed * dt; _applyCameraTransform(); }
+    if (_keysDown['e']) { _camYaw -= rotSpeed * dt; _applyCameraTransform(); }
 
     var dx = 0, dz = 0;
     var speed = CAM_PAN_SPEED * CAM_ZOOM;
@@ -253,10 +261,11 @@ function updateCameraEdgeScroll(dt) {
 
     if (dx === 0 && dz === 0) return;
 
-    // Convert screen direction to world (isometric 45 rotation)
-    var cos45 = 0.7071;
-    var worldDx = (dx * cos45 + dz * cos45);
-    var worldDz = (-dx * cos45 + dz * cos45);
+    // Convert screen direction to world (aligned with current camera yaw)
+    var cosY = Math.cos(_camYaw);
+    var sinY = Math.sin(_camYaw);
+    var worldDx = (dx * cosY + dz * sinY);
+    var worldDz = (-dx * sinY + dz * cosY);
 
     CAM_PAN_X = Math.max(-CAM_PAN_LIMIT, Math.min(CAM_PAN_LIMIT, CAM_PAN_X + worldDx));
     CAM_PAN_Z = Math.max(-CAM_PAN_LIMIT, Math.min(CAM_PAN_LIMIT, CAM_PAN_Z + worldDz));
@@ -266,11 +275,34 @@ function updateCameraEdgeScroll(dt) {
 // Reset camera to default (double-click or key)
 function resetCamera() {
     if (!_tacticalView) toggleFPV(); // exit avatar follow cam, back to tactical
-    CAM_ZOOM = 1.0;
-    CAM_PAN_X = 0;
-    CAM_PAN_Z = 0;
+    CAM_ZOOM = 0.55;
+    // Pan back to player's base
+    panCameraToPlayerBase();
     _camYaw = _camBaseYaw; // respect player's slot rotation
     _updateCameraFrustum();
+}
+
+// Pan camera above the player's deploy zone (base)
+function panCameraToPlayerBase(serverSlot) {
+    if (serverSlot === undefined || serverSlot === null) {
+        serverSlot = (window.mySlotId !== null && window.mySlotId !== undefined) ? window.mySlotId : 0;
+    }
+    // Deploy zone centers in world coords (board is 66x66, 1 cell = 1 unit)
+    // Player 0 (SUD):  rows 62-65, cols ~23-42 → center (33, 63.5)
+    // Player 1 (NORD): rows 0-3,   cols ~23-42 → center (33, 1.5)
+    // Player 2 (OVEST): cols 0-3,  rows ~23-42 → center (1.5, 33)
+    // Player 3 (EST):   cols 62-65, rows ~23-42 → center (63.5, 33)
+    var baseCenters = [
+        { x: BOARD_COLS / 2, z: BOARD_ROWS - 3 },   // SUD
+        { x: BOARD_COLS / 2, z: 3 },                  // NORD
+        { x: 3, z: BOARD_ROWS / 2 },                  // OVEST
+        { x: BOARD_COLS - 3, z: BOARD_ROWS / 2 },     // EST
+    ];
+    var base = baseCenters[serverSlot] || baseCenters[0];
+    // CAM_PAN is offset from BOARD_CX/CZ (board center)
+    CAM_PAN_X = (base.x * TILE_UNIT) - BOARD_CX;
+    CAM_PAN_Z = (base.z * TILE_UNIT) - BOARD_CZ;
+    if (threeCamera) _applyCameraTransform();
 }
 
 function _resizeThree() {
@@ -597,7 +629,8 @@ function updateAvatarMovement(dt) {
                 wx: Math.round(_avatarWX * 100) / 100,
                 wz: Math.round(_avatarWZ * 100) / 100,
                 row: avatar.row,
-                col: avatar.col
+                col: avatar.col,
+                facing: Math.round(_camOrbitAngle * 100) / 100
             }));
         }
     }

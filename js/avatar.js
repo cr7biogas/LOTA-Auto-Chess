@@ -2,6 +2,44 @@
 // LOTA AUTO CHESS — avatar.js — Player avatar system
 // ============================================================
 
+// ════════════════════════════════════════════════════════════
+//  MULTIPLAYER SYNC — send game events to server for relay
+// ════════════════════════════════════════════════════════════
+function _mpSend(data) {
+    if (window._singlePlayerMode) return;
+    if (typeof lobbySocket !== 'undefined' && lobbySocket && lobbySocket.readyState === 1) {
+        lobbySocket.send(JSON.stringify(data));
+    }
+}
+
+// Send damage dealt by local avatar to a target unit
+function _mpSyncDamage(targetId, damage, isCrit, dmgType, effects) {
+    _mpSend({
+        type: 'combat_event',
+        event: 'damage',
+        targetId: targetId,
+        damage: damage,
+        isCrit: isCrit || false,
+        dmgType: dmgType || 'physical',
+        effects: effects || []
+    });
+}
+
+// Send heal applied by local avatar
+function _mpSyncHeal(targetId, amount) {
+    _mpSend({ type: 'combat_event', event: 'heal', targetId: targetId, amount: amount });
+}
+
+// Send ability activation
+function _mpSyncAbility(abilityId, targets) {
+    _mpSend({ type: 'combat_event', event: 'ability', abilityId: abilityId, targets: targets || [] });
+}
+
+// Send unit death (confirmed by local client)
+function _mpSyncDeath(unitId) {
+    _mpSend({ type: 'combat_event', event: 'death', unitId: unitId });
+}
+
 // --- Create avatar unit from class ---
 function createAvatar(classId, owner) {
     var cls = AVATAR_CLASSES[classId];
@@ -322,6 +360,7 @@ function executeAvatarAbility(avatar, abilityId, allUnits, teams, grid) {
                 if (!enemies[i].alive) continue;
                 if (chebyshevDist(avatar.row, avatar.col, enemies[i].row, enemies[i].col) <= ab.radius) {
                     enemies[i].effects.push({ type: 'freeze', value: 0, ticksLeft: ab.duration, stacking: 'refresh' });
+                    _mpSyncDamage(enemies[i].id, 0, false, 'magic', [{ type: 'freeze', ticksLeft: ab.duration }]);
                 }
             }
             { // VFX
@@ -359,6 +398,7 @@ function executeAvatarAbility(avatar, abilityId, allUnits, teams, grid) {
                         enemies[i].hp -= rawDmg;
                         if (enemies[i].hp <= 0) { enemies[i].hp = 0; enemies[i].alive = false; }
                     }
+                    _mpSyncDamage(enemies[i].id, rawDmg, false, 'magic', []);
                     // Rain impact VFX on each enemy
                     var _drX = enemies[i]._smoothWX !== undefined ? enemies[i]._smoothWX : (typeof cellToWorld === 'function' ? cellToWorld(enemies[i].row, enemies[i].col).x : enemies[i].col);
                     var _drZ = enemies[i]._smoothWZ !== undefined ? enemies[i]._smoothWZ : (typeof cellToWorld === 'function' ? cellToWorld(enemies[i].row, enemies[i].col).z : enemies[i].row);
@@ -387,13 +427,15 @@ function executeAvatarAbility(avatar, abilityId, allUnits, teams, grid) {
             if (target && chebyshevDist(avatar.row, avatar.col, target.row, target.col) <= avatar.range + 1) {
                 var rawDmg = Math.round(avatar.atk * ab.value);
                 var dmgResult = { damage: rawDmg, isCrit: false, isMiss: false, isDodge: false, damageType: DMG_PHYSICAL };
-                if (ab.stun) target.effects.push({ type: 'freeze', value: 0, ticksLeft: ab.stun, stacking: 'refresh' });
+                var _hsEfx = [];
+                if (ab.stun) { target.effects.push({ type: 'freeze', value: 0, ticksLeft: ab.stun, stacking: 'refresh' }); _hsEfx.push({ type: 'freeze', ticksLeft: ab.stun }); }
                 if (typeof applyDamage === 'function') {
                     applyDamage(target, dmgResult, avatar);
                 } else {
                     target.hp -= rawDmg;
                     if (target.hp <= 0) { target.hp = 0; target.alive = false; }
                 }
+                _mpSyncDamage(target.id, rawDmg, false, 'physical', _hsEfx);
             }
             // ── Animation + VFX ──
             var _hsAvE = typeof threeUnitModels !== 'undefined' ? threeUnitModels[avatar.id] : null;
@@ -854,8 +896,11 @@ function _fireAvatarProjectile(avatar, target, p, avX, avY, avZ) {
             }
             if (tgt.hp <= 0) { tgt.hp = 0; tgt.alive = false; }
             if (typeof addDamageNumber === 'function') addDamageNumber(tgt, d, crit ? 'crit' : params.dmgType);
-            if (params.slow) tgt.effects.push({ type: 'speed_reduction',   value: 0.35, ticksLeft: params.slow, stacking: 'refresh' });
-            if (params.stun) tgt.effects.push({ type: 'freeze', value: 0,    ticksLeft: params.stun, stacking: 'refresh' });
+            var _pefx = [];
+            if (params.slow) { tgt.effects.push({ type: 'speed_reduction', value: 0.35, ticksLeft: params.slow, stacking: 'refresh' }); _pefx.push({ type: 'speed_reduction', value: 0.35, ticksLeft: params.slow }); }
+            if (params.stun) { tgt.effects.push({ type: 'freeze', value: 0, ticksLeft: params.stun, stacking: 'refresh' }); _pefx.push({ type: 'freeze', ticksLeft: params.stun }); }
+            // MP sync projectile damage
+            if (typeof _mpSyncDamage === 'function') _mpSyncDamage(tgt.id, d, crit, params.dmgType, _pefx);
             // Impact VFX
             var iy = TILE_TOP;
             if (avatarClass === 'stregone' && typeof vfxArcaneImpact3D === 'function') {
@@ -1132,8 +1177,11 @@ function avatarComboAttack() {
             }
             if (e.hp <= 0) { e.hp = 0; e.alive = false; }
             if (typeof addDamageNumber === 'function') addDamageNumber(e, dmg, isCrit ? 'crit' : p.dmgType);
-            if (p.stun) e.effects.push({ type: 'freeze', value: 0,    ticksLeft: p.stun, stacking: 'refresh' });
-            if (p.slow) e.effects.push({ type: 'speed_reduction',   value: 0.35, ticksLeft: p.slow, stacking: 'refresh' });
+            var _efx = [];
+            if (p.stun) { e.effects.push({ type: 'freeze', value: 0, ticksLeft: p.stun, stacking: 'refresh' }); _efx.push({ type: 'freeze', ticksLeft: p.stun }); }
+            if (p.slow) { e.effects.push({ type: 'speed_reduction', value: 0.35, ticksLeft: p.slow, stacking: 'refresh' }); _efx.push({ type: 'speed_reduction', value: 0.35, ticksLeft: p.slow }); }
+            // MP sync: notify other clients of this damage
+            _mpSyncDamage(e.id, dmg, isCrit, p.dmgType, _efx);
 
             // Per-enemy hit VFX
             var ex = (e._smoothWX !== undefined) ? e._smoothWX : (typeof cellToWorld === 'function' ? cellToWorld(e.row, e.col).x : e.col);

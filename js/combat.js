@@ -873,10 +873,13 @@ function runCombatTick(teams, grid) {
     // Step 2-4: Movement
     var pendingMoves = [];
 
-    // Sync player avatar grid position from smooth world position
+    // Sync ALL human-controlled avatar grid positions from smooth world position
+    // Local avatar: moved by WASD. Remote avatars: moved by network sync.
+    // Both have _smoothWX/_smoothWZ set, so update grid for all of them.
+    var _mySlot = (typeof window !== 'undefined' && window.mySlotId !== null && window.mySlotId !== undefined) ? window.mySlotId : 0;
     for (var ai = 0; ai < allUnits.length; ai++) {
         var avu = allUnits[ai];
-        if (avu.isAvatar && avu.owner === 0 && avu.alive && avu._smoothWX !== undefined) {
+        if (avu.isAvatar && avu.alive && avu._smoothWX !== undefined) {
             var newCol = Math.floor(avu._smoothWX / (typeof TILE_UNIT !== 'undefined' ? TILE_UNIT : 1));
             var newRow = Math.floor(avu._smoothWZ / (typeof TILE_UNIT !== 'undefined' ? TILE_UNIT : 1));
             if (isValidCell(newRow, newCol) && (newRow !== avu.row || newCol !== avu.col)) {
@@ -892,8 +895,8 @@ function runCombatTick(teams, grid) {
         var unit = allUnits[i];
         if (!unit.alive || hasEffect(unit, 'freeze') || hasEffect(unit, 'stun')) continue;
 
-        // Human avatar is player-controlled — skip auto movement
-        if (unit.isAvatar && unit.owner === 0) continue;
+        // Human-controlled avatars (local + remote synced) — skip AI auto movement
+        if (unit.isAvatar && unit._smoothWX !== undefined) continue;
 
         var enemies = getEnemiesOf(unit, teams);
         var allies = getAlliesOf(unit, teams);
@@ -1008,13 +1011,16 @@ function runCombatTick(teams, grid) {
     for (var i = 0; i < allUnits.length; i++) {
         if (!allUnits[i].alive) continue;
         // Human avatar attacks only player-chosen target
-        if (allUnits[i].isAvatar && allUnits[i].owner === 0) {
+        // Local player avatar: attacks only player-chosen target (combo system handles damage)
+        if (allUnits[i].isAvatar && allUnits[i].owner === _mySlot) {
             if (allUnits[i].targetUnitId) {
                 var avEnemies = getEnemiesOf(allUnits[i], teams);
                 processAttack(allUnits[i], avEnemies, allUnits, grid);
             }
             continue;
         }
+        // Remote human avatars: skip auto-attack (their damage comes via network sync)
+        if (allUnits[i].isAvatar && allUnits[i]._smoothWX !== undefined) continue;
         var enemies = getEnemiesOf(allUnits[i], teams);
         processAttack(allUnits[i], enemies, allUnits, grid);
     }
