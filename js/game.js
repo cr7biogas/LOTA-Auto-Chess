@@ -590,7 +590,14 @@ function applyServerUnitsAndStartCombat(allUnits) {
             unit.px = pos.x; unit.py = pos.y;
             return unit;
         });
-        console.log('[Game] Server slot ' + serverSlot + ' → local slot ' + localSlot + ': ' + players[localSlot].fieldUnits.length + ' units');
+        // Spawn 3D models for remote players' units
+        for (var j = 0; j < players[localSlot].fieldUnits.length; j++) {
+            var remoteUnit = players[localSlot].fieldUnits[j];
+            if (typeof spawnUnitModel3D === 'function' && typeof threeUnitModels !== 'undefined' && !threeUnitModels[remoteUnit.id]) {
+                spawnUnitModel3D(remoteUnit);
+            }
+        }
+        console.log('[Game] Server slot ' + serverSlot + ' → local slot ' + localSlot + ': ' + players[localSlot].fieldUnits.length + ' units (3D spawned)');
     }
 
     // AI slots with no data: place AI units
