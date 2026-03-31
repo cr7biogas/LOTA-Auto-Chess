@@ -611,8 +611,10 @@ function applyServerUnitsAndStartCombat(allUnits) {
         var remoteMilitia = [];
         var remoteAvatar = null;
 
+        console.log('[MP-DEBUG] Processing slot ' + serverSlot + '→local' + localSlot + ', ' + serverUnits.length + ' units to process');
         for (var j = 0; j < serverUnits.length; j++) {
             var u = serverUnits[j];
+            console.log('[MP-DEBUG]   unit[' + j + ']: charId=' + u.charId + ' isAvatar=' + u.isAvatar + ' militiaType=' + u.militiaType + ' star=' + u.star + ' row=' + u.row + ' col=' + u.col + ' inCHARACTERS=' + !!CHARACTERS[u.charId]);
             if (u.isAvatar && u.avatarClass) {
                 // Rebuild avatar for remote player
                 if (!players[localSlot].avatar) {
@@ -803,7 +805,19 @@ function beginCombatPhase() {
         campCreeps[bKey] = dungeonBosses[bKey];
     }
 
+    // DEBUG: log all players' field units before initCombat
+    for (var _dbg = 0; _dbg < alivePlayers.length; _dbg++) {
+        var _dp = alivePlayers[_dbg];
+        console.log('[MP-DEBUG] PRE-initCombat player[' + _dp.index + '] ' + _dp.name + ': fieldUnits=' + (_dp.fieldUnits||[]).length + ' → ' + (_dp.fieldUnits||[]).map(function(u){return u.charId;}).join(',') + ' | militia=' + (_dp.militiaUnits||[]).length + ' | avatar=' + (_dp.avatar ? _dp.avatar.avatarClass : 'NONE'));
+    }
+
     var combatState = initCombat(alivePlayers, null, campCreeps);
+
+    // DEBUG: log combatUnits count per team
+    for (var _tk in combatState.teams) {
+        console.log('[MP-DEBUG] POST-initCombat team ' + _tk + ': ' + combatState.teams[_tk].length + ' units');
+    }
+
     if (typeof preWarmRound3D === 'function') preWarmRound3D();
     startCombatAnimation(combatState);
 }
