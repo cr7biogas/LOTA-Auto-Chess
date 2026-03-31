@@ -135,17 +135,24 @@ function updateHUD(player, round) {
         if (elTotalGold) elTotalGold.textContent = Math.floor(player.totalGoldEarned * 10) / 10;
     }
 
-    // Synergy badges
-    if (elSynergies && player) {
-        elSynergies.innerHTML = '';
+    // Synergy badges — render into dedicated synergy bar
+    var synBar = document.getElementById('hud-synergy-bar');
+    if (synBar && player) {
+        synBar.innerHTML = '';
         var activeSynergies = typeof detectSynergies === 'function' ? detectSynergies(player) : [];
         for (var i = 0; i < activeSynergies.length; i++) {
             var syn = activeSynergies[i];
             var badge = document.createElement('span');
             badge.className = 'synergy-badge synergy-' + syn.type;
             badge.textContent = syn.name;
-            badge.title = syn.id;
-            elSynergies.appendChild(badge);
+            badge.title = syn.desc || syn.id;
+            synBar.appendChild(badge);
+        }
+        // Show/hide bar based on whether there are synergies
+        if (activeSynergies.length > 0) {
+            synBar.classList.add('active');
+        } else {
+            synBar.classList.remove('active');
         }
     }
 }
@@ -1240,6 +1247,7 @@ function updateSidePanel(playersArr, activeSynergies) {
                 if (!cDef) continue;
                 var cEl = document.createElement('div');
                 cEl.className = 'inventory-item tier-' + cDef.tier;
+                cEl.setAttribute('data-consumable-id', cId);
                 cEl.textContent = cDef.icon + ' ' + cDef.name;
                 cEl.title = cDef.desc;
                 if (gamePhase === PHASE_PLANNING) {
@@ -1247,11 +1255,13 @@ function updateSidePanel(playersArr, activeSynergies) {
                         cEl.style.cursor = 'pointer';
                         cEl.addEventListener('click', function() {
                             selectedConsumableId = consumId;
+                            if (typeof updateConsumableSelectedState === 'function') updateConsumableSelectedState();
                             updateSidePanel(players, activeSynergies);
                         });
                     })(cId);
                     if (typeof selectedConsumableId !== 'undefined' && selectedConsumableId === cId) {
                         cEl.classList.add('selected');
+                        cEl.classList.add('consumable-selected');
                     }
                 }
                 consumablePanel.appendChild(cEl);
@@ -1491,7 +1501,7 @@ function setupTooltip() {
         // In FPS avatar mode suppress tooltip entirely
         if (typeof _tacticalView !== 'undefined' && !_tacticalView &&
             typeof gamePhase !== 'undefined' && (gamePhase === PHASE_COMBAT || gamePhase === PHASE_RESULT)) {
-            tooltip.style.display = 'none';
+            tooltip.classList.remove('active');
             tooltipVisible = false;
             hoveredUnitId = null;
             target.style.cursor = '';
@@ -1504,7 +1514,7 @@ function setupTooltip() {
 
         var cell = _screenToCell(mx, my);
         if (!cell) {
-            tooltip.style.display = 'none';
+            tooltip.classList.remove('active');
             tooltipVisible = false;
             return;
         }
@@ -1518,7 +1528,7 @@ function setupTooltip() {
         }
 
         if (!foundUnit) {
-            tooltip.style.display = 'none';
+            tooltip.classList.remove('active');
             tooltipVisible = false;
             hoveredUnitId = null;
             target.style.cursor = '';
@@ -1616,10 +1626,12 @@ function setupTooltip() {
             statsEl.innerHTML = lines.join('<br>');
         }
 
-        tooltip.style.display = 'block';
+        // Pre-calculate position before making visible (prevents flicker)
         tooltip.style.left = (e.clientX + 16) + 'px';
         tooltip.style.top = (e.clientY + 16) + 'px';
+        tooltip.classList.add('active');
 
+        // Adjust if overflowing screen
         var tooltipRect = tooltip.getBoundingClientRect();
         if (tooltipRect.right > window.innerWidth) {
             tooltip.style.left = (e.clientX - tooltipRect.width - 8) + 'px';
@@ -1632,7 +1644,7 @@ function setupTooltip() {
     });
 
     target.addEventListener('mouseleave', function() {
-        tooltip.style.display = 'none';
+        tooltip.classList.remove('active');
         tooltipVisible = false;
         hoveredUnitId = null;
         target.style.cursor = '';
@@ -2702,5 +2714,158 @@ function setupCombatSpeedToggle() {
         else if (combatSpeedMultiplier === 2) combatSpeedMultiplier = 4;
         else combatSpeedMultiplier = 1;
         btn.textContent = combatSpeedMultiplier + 'x';
+    });
+}
+
+// ============================================================
+// PAUSE MENU (ESC key)
+// ============================================================
+var _pauseMenuOpen = false;
+
+function initPauseMenu() {
+    var resumeBtn = document.getElementById('btn-resume');
+    var abandonBtn = document.getElementById('btn-abandon');
+
+    if (resumeBtn) {
+        resumeBtn.addEventListener('click', function() {
+            closePauseMenu();
+        });
+    }
+    if (abandonBtn) {
+        abandonBtn.addEventListener('click', function() {
+            closePauseMenu();
+            // Return to main menu
+            hideAllOverlays();
+            showOverlay('menu-overlay');
+            var hud = document.getElementById('hud');
+            var bench = document.getElementById('bench-panel');
+            var toolbar = document.getElementById('icon-toolbar');
+            var sidePanel = document.getElementById('side-panel');
+            var roster = document.getElementById('unit-roster');
+            var synBar = document.getElementById('hud-synergy-bar');
+            var planAct = document.getElementById('planning-actions');
+            var combatCtrl = document.getElementById('combat-controls');
+            var avatarHud = document.getElementById('avatar-hud');
+            if (hud) hud.classList.remove('active');
+            if (bench) bench.classList.remove('active');
+            if (toolbar) toolbar.classList.remove('active');
+            if (sidePanel) sidePanel.classList.remove('active');
+            if (roster) roster.classList.remove('active');
+            if (synBar) synBar.classList.remove('active');
+            if (planAct) planAct.classList.remove('active');
+            if (combatCtrl) combatCtrl.classList.remove('active');
+            if (avatarHud) avatarHud.style.display = 'none';
+            if (typeof startMenuMusic === 'function') startMenuMusic();
+        });
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            // Don't trigger during menu/lobby/loading
+            if (typeof gamePhase !== 'undefined' &&
+                gamePhase !== PHASE_MENU &&
+                !document.getElementById('menu-overlay').classList.contains('active') &&
+                !document.getElementById('lobby-overlay').classList.contains('active') &&
+                !document.getElementById('loading-overlay').classList.contains('active') &&
+                !document.getElementById('gameover-overlay').classList.contains('active')) {
+                if (_pauseMenuOpen) {
+                    closePauseMenu();
+                } else {
+                    openPauseMenu();
+                }
+                e.preventDefault();
+            }
+        }
+    });
+}
+
+function openPauseMenu() {
+    _pauseMenuOpen = true;
+    showOverlay('pause-overlay');
+}
+
+function closePauseMenu() {
+    _pauseMenuOpen = false;
+    hideOverlay('pause-overlay');
+}
+
+// ============================================================
+// SIDE PANEL COLLAPSE TOGGLE
+// ============================================================
+function initSidePanelCollapse() {
+    var collapseBtn = document.getElementById('side-panel-collapse');
+    var sidePanel = document.getElementById('side-panel');
+    if (!collapseBtn || !sidePanel) return;
+
+    collapseBtn.addEventListener('click', function() {
+        sidePanel.classList.toggle('collapsed');
+        collapseBtn.textContent = sidePanel.classList.contains('collapsed') ? '\u25C0' : '\u25B6';
+    });
+}
+
+// ============================================================
+// CONSUMABLE SELECTED STATE — visual feedback
+// ============================================================
+function updateConsumableSelectedState() {
+    // Remove old highlight
+    var items = document.querySelectorAll('.inventory-item.consumable-selected');
+    for (var i = 0; i < items.length; i++) {
+        items[i].classList.remove('consumable-selected');
+    }
+    // Apply to current selection
+    if (selectedConsumableId !== null) {
+        var consumItems = document.querySelectorAll('.inventory-item[data-consumable-id]');
+        for (var i = 0; i < consumItems.length; i++) {
+            if (consumItems[i].getAttribute('data-consumable-id') === selectedConsumableId) {
+                consumItems[i].classList.add('consumable-selected');
+            }
+        }
+    }
+}
+
+// ============================================================
+// DRAG & DROP — Ghost feedback for bench units
+// ============================================================
+var _dragGhost = null;
+var _dragSourceSlot = null;
+
+function initDragGhostFeedback() {
+    var benchPanel = document.getElementById('bench-panel');
+    if (!benchPanel) return;
+
+    benchPanel.addEventListener('mousedown', function(e) {
+        var slot = e.target.closest('.bench-slot');
+        if (!slot || slot.classList.contains('locked') || !slot.classList.contains('occupied')) return;
+
+        _dragSourceSlot = slot;
+        slot.classList.add('drag-source');
+
+        // Create ghost element
+        var unitEl = slot.querySelector('.bench-unit');
+        if (unitEl) {
+            _dragGhost = unitEl.cloneNode(true);
+            _dragGhost.className = 'drag-ghost';
+            _dragGhost.style.left = e.clientX + 'px';
+            _dragGhost.style.top = e.clientY + 'px';
+            document.body.appendChild(_dragGhost);
+        }
+    });
+
+    document.addEventListener('mousemove', function(e) {
+        if (_dragGhost) {
+            _dragGhost.style.left = (e.clientX - 22) + 'px';
+            _dragGhost.style.top = (e.clientY - 22) + 'px';
+        }
+    });
+
+    document.addEventListener('mouseup', function() {
+        if (_dragGhost) {
+            document.body.removeChild(_dragGhost);
+            _dragGhost = null;
+        }
+        if (_dragSourceSlot) {
+            _dragSourceSlot.classList.remove('drag-source');
+            _dragSourceSlot = null;
+        }
     });
 }

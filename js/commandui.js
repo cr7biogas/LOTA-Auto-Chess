@@ -73,11 +73,17 @@ function getToastIcon(type) {
 // =============================================
 var combatLogLastIndex = 0;
 var combatLogVisible = true;
+var combatLogScrollPaused = false;
+var combatLogFilters = { skill: true, death: true, heal: true };
+var combatLogNewCount = 0;
 
 function initCombatLog() {
     combatLogLastIndex = 0;
+    combatLogNewCount = 0;
     var entries = document.getElementById('combat-log-entries');
     if (entries) entries.innerHTML = '';
+    var badge = document.getElementById('combat-log-new-badge');
+    if (badge) badge.classList.remove('active');
 }
 
 function updateCombatLog() {
@@ -85,12 +91,21 @@ function updateCombatLog() {
     var entries = document.getElementById('combat-log-entries');
     if (!entries) return;
 
+    var addedNew = false;
     while (combatLogLastIndex < combatLog.length) {
         var text = combatLog[combatLogLastIndex];
         combatLogLastIndex++;
 
+        var logClass = classifyLogEntry(text);
         var entry = document.createElement('div');
-        entry.className = 'log-entry ' + classifyLogEntry(text);
+        entry.className = 'log-entry ' + logClass;
+        entry.setAttribute('data-log-type', logClass.replace('log-', ''));
+
+        // Apply filter visibility
+        var filterType = logClass.replace('log-', '');
+        if (combatLogFilters[filterType] === false) {
+            entry.style.display = 'none';
+        }
 
         var tick = document.createElement('span');
         tick.className = 'log-tick';
@@ -108,11 +123,23 @@ function updateCombatLog() {
         entry.appendChild(msg);
 
         entries.appendChild(entry);
+        addedNew = true;
     }
 
-    // Auto-scroll to bottom
-    var container = document.getElementById('combat-log-scroll');
-    if (container) container.scrollTop = container.scrollHeight;
+    // Auto-scroll (unless paused)
+    if (addedNew) {
+        var container = document.getElementById('combat-log-scroll');
+        if (container && !combatLogScrollPaused) {
+            container.scrollTop = container.scrollHeight;
+        } else if (combatLogScrollPaused) {
+            combatLogNewCount++;
+            var badge = document.getElementById('combat-log-new-badge');
+            if (badge) {
+                badge.textContent = combatLogNewCount + ' NUOVI';
+                badge.classList.add('active');
+            }
+        }
+    }
 }
 
 function classifyLogEntry(text) {
@@ -181,7 +208,7 @@ function showPhaseBanner(text, subtext, color) {
     if (phaseBannerTimeout) clearTimeout(phaseBannerTimeout);
     phaseBannerTimeout = setTimeout(function() {
         banner.classList.remove('active');
-    }, 2000);
+    }, 1200);
 }
 
 // =============================================
@@ -298,7 +325,47 @@ function initCommandUI() {
     if (toolbarLogBtn) {
         toolbarLogBtn.addEventListener('click', function() {
             toggleCombatLog();
-            // toggleCombatLog already syncs the icon class
+        });
+    }
+
+    // Pause auto-scroll button
+    var pauseBtn = document.getElementById('combat-log-pause');
+    if (pauseBtn) {
+        pauseBtn.addEventListener('click', function() {
+            combatLogScrollPaused = !combatLogScrollPaused;
+            pauseBtn.classList.toggle('active', combatLogScrollPaused);
+            pauseBtn.innerHTML = combatLogScrollPaused ? '&#x25B6;' : '&#x23F8;';
+            var logEl = document.getElementById('combat-log');
+            if (logEl) logEl.classList.toggle('scroll-paused', combatLogScrollPaused);
+            // If un-pausing, scroll to bottom and clear badge
+            if (!combatLogScrollPaused) {
+                var container = document.getElementById('combat-log-scroll');
+                if (container) container.scrollTop = container.scrollHeight;
+                combatLogNewCount = 0;
+                var badge = document.getElementById('combat-log-new-badge');
+                if (badge) badge.classList.remove('active');
+            }
+        });
+    }
+
+    // Filter buttons
+    var filterBtns = document.querySelectorAll('.combat-log-controls button[data-filter]');
+    for (var i = 0; i < filterBtns.length; i++) {
+        filterBtns[i].addEventListener('click', function() {
+            var filterType = this.getAttribute('data-filter');
+            combatLogFilters[filterType] = !combatLogFilters[filterType];
+            this.classList.toggle('active', combatLogFilters[filterType]);
+            // Show/hide matching entries
+            var entriesEl = document.getElementById('combat-log-entries');
+            if (entriesEl) {
+                var logEntries = entriesEl.querySelectorAll('.log-entry');
+                for (var j = 0; j < logEntries.length; j++) {
+                    var type = logEntries[j].getAttribute('data-log-type');
+                    if (type === filterType) {
+                        logEntries[j].style.display = combatLogFilters[filterType] ? '' : 'none';
+                    }
+                }
+            }
         });
     }
 }

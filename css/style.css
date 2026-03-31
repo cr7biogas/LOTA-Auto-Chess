@@ -9,8 +9,9 @@
    ============================================================ */
 :root {
     --hud-h:    48px;   /* top bar */
+    --syn-h:    32px;   /* synergy bar below HUD */
     --bar-h:    82px;   /* bench/bottom bar */
-    --panel-w: 270px;   /* right side panel */
+    --panel-w: 310px;   /* right side panel (wider for readability) */
     --skill-w: 250px;   /* left skill panel */
     --log-w:   274px;   /* combat log width */
     --uic-w:   230px;   /* unit info card width */
@@ -314,21 +315,42 @@ body {
     letter-spacing: 1px; font-weight: 700;
     background: rgba(96,165,250,0.1); padding: 3px 10px; border-radius: 4px;
 }
-#hud-synergies { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; overflow: hidden; }
+/* Synergies moved to dedicated bar below HUD */
+#hud-synergies { display: none; }
+
+/* === Synergy Bar (below HUD) === */
+#hud-synergy-bar {
+    position: fixed;
+    top: var(--hud-h);
+    left: 0; right: 0;
+    height: var(--syn-h);
+    background: rgba(10,12,20,0.92);
+    border-bottom: 1px solid rgba(96,165,250,0.15);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 0 16px;
+    z-index: 49;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+#hud-synergy-bar::-webkit-scrollbar { display: none; }
+#hud-synergy-bar.active { display: flex; }
 
 /* Fullscreen button (inherits .toolbar-icon styles when in toolbar) */
 
 /* === Icon Toolbar (right edge, always visible) === */
 #icon-toolbar {
     position: fixed;
-    top: var(--hud-h);
+    top: calc(var(--hud-h) + var(--syn-h));
     right: 0;
-    width: 46px;
+    width: 52px;
     display: none;
     flex-direction: column;
     align-items: center;
-    gap: 2px;
-    padding: 6px 4px;
+    gap: 4px;
+    padding: 8px 4px;
     background: rgba(10,12,20,0.95);
     border-left: 1px solid rgba(71,85,105,0.4);
     border-bottom-left-radius: 10px;
@@ -337,16 +359,39 @@ body {
 #icon-toolbar.active { display: flex; }
 
 .toolbar-icon {
-    width: 38px; height: 38px;
+    width: 44px; height: 44px;
     display: flex; align-items: center; justify-content: center;
     background: rgba(30,35,55,0.5);
     border: 1px solid rgba(71,85,105,0.3);
     border-radius: 8px;
     color: #94a3b8;
-    font-size: 16px;
+    font-size: 18px;
     cursor: pointer;
     transition: all 0.15s;
     position: relative;
+}
+/* Toolbar tooltip label */
+.toolbar-icon[data-label]::after {
+    content: attr(data-label);
+    position: absolute;
+    right: calc(100% + 8px);
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(15,17,23,0.95);
+    color: #e2e8f0;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    border: 1px solid rgba(71,85,105,0.4);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.toolbar-icon[data-label]:hover::after {
+    opacity: 1;
 }
 .toolbar-icon:hover {
     background: rgba(96,165,250,0.12);
@@ -641,7 +686,7 @@ body {
     position: relative;
 }
 .bench-slot:hover { border-color: #60a5fa; background: rgba(96,165,250,0.08); }
-.bench-slot.selected { border-color: #a78bfa; border-style: solid; background: rgba(167, 139, 250, 0.15); box-shadow: 0 0 12px rgba(167,139,250,0.3); }
+.bench-slot.selected { border-color: #22c55e; border-style: solid; background: rgba(34, 197, 94, 0.15); box-shadow: 0 0 12px rgba(34,197,94,0.3); }
 .bench-slot.occupied { border-style: solid; border-color: #475569; background: rgba(30, 41, 59, 0.5); }
 .bench-slot.occupied.selected { border-color: #a78bfa; background: rgba(167, 139, 250, 0.15); box-shadow: 0 0 12px rgba(167,139,250,0.3); }
 .bench-slot.locked { opacity: 0.5; cursor: not-allowed; }
@@ -703,9 +748,9 @@ body {
 /* === Side Panel (right) === */
 #side-panel {
     position: fixed;
-    top: var(--hud-h); right: 46px;
+    top: calc(var(--hud-h) + var(--syn-h)); right: 52px;
     width: var(--panel-w);
-    height: calc(100% - var(--hud-h));
+    height: calc(100% - var(--hud-h) - var(--syn-h));
     background: rgba(12, 14, 22, 0.96);
     border-left: 1px solid rgba(71,85,105,0.4);
     overflow-y: hidden;
@@ -714,8 +759,32 @@ body {
     z-index: 25;
     flex-direction: column;
     font-size: 13px;
+    transition: width 0.2s ease;
 }
 #side-panel.active { display: flex; }
+/* Collapse toggle button */
+#side-panel-collapse {
+    position: absolute;
+    left: -18px; top: 50%;
+    transform: translateY(-50%);
+    width: 18px; height: 48px;
+    background: rgba(12,14,22,0.96);
+    border: 1px solid rgba(71,85,105,0.4);
+    border-right: none;
+    border-radius: 6px 0 0 6px;
+    color: #94a3b8;
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 26;
+    transition: color 0.15s;
+}
+#side-panel-collapse:hover { color: #e2e8f0; }
+#side-panel.collapsed { width: 0; overflow: hidden; }
+#side-panel.collapsed .sp-tab-content,
+#side-panel.collapsed #selected-unit-section { display: none; }
 
 /* --- Side Panel Tabs (hidden — replaced by icon toolbar) --- */
 #sp-tabs { display: none; }
@@ -800,9 +869,9 @@ body {
     margin: 2px;
     font-weight: 600;
 }
-.synergy-pair { background: rgba(96, 165, 250, 0.15); color: #60a5fa; border: 1px solid rgba(96, 165, 250, 0.3); }
-.synergy-trio { background: rgba(52, 211, 153, 0.15); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.3); }
-.synergy-quartet { background: rgba(251, 191, 36, 0.15); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.3); }
+.synergy-pair { background: rgba(96, 165, 250, 0.25); color: #93c5fd; border: 1px solid rgba(96, 165, 250, 0.5); }
+.synergy-trio { background: rgba(52, 211, 153, 0.25); color: #6ee7b7; border: 1px solid rgba(52, 211, 153, 0.5); }
+.synergy-quartet { background: rgba(251, 191, 36, 0.25); color: #fde68a; border: 1px solid rgba(251, 191, 36, 0.5); }
 
 .synergy-item {
     padding: 4px 8px;
@@ -1042,10 +1111,12 @@ body {
     max-width: 260px;
     z-index: 200;
     pointer-events: none;
-    display: none;
+    opacity: 0;
+    visibility: hidden;
     box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+    transition: opacity 0.1s ease;
 }
-#tooltip.active { display: block; }
+#tooltip.active { opacity: 1; visibility: visible; }
 .tooltip-name { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
 .tooltip-class { color: #94a3b8; font-size: 11px; margin-bottom: 8px; }
 .tooltip-stat { display: flex; justify-content: space-between; padding: 1px 0; }
@@ -1054,7 +1125,7 @@ body {
 /* === Planning actions — integrated into HUD area right side === */
 #planning-actions {
     position: fixed;
-    top: 6px; right: 56px;
+    top: 6px; right: 62px;
     display: none;
     align-items: center;
     gap: 8px;
@@ -1081,7 +1152,7 @@ body {
 #combat-controls {
     position: fixed;
     top: calc(var(--hud-h) + 6px);
-    right: 56px;
+    right: 62px;
     display: none;
     gap: 6px;
     z-index: 51;
@@ -1255,10 +1326,10 @@ body {
 /* === Skill Equip Panel (Planning) === */
 .skill-equip-panel {
     position: fixed;
-    top: var(--hud-h);
+    top: calc(var(--hud-h) + var(--syn-h));
     left: 0;
     width: var(--skill-w);
-    max-height: calc(100% - var(--hud-h));
+    max-height: calc(100% - var(--hud-h) - var(--syn-h));
     background: rgba(15, 17, 23, 0.92);
     border-right: 1px solid #2d3748;
     overflow-y: auto;
@@ -1384,36 +1455,31 @@ body {
 /* === Phase Banner === */
 #phase-banner {
     position: fixed;
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%) scale(0.8);
+    top: 15%; left: 50%;
+    transform: translate(-50%, -50%) scale(0.9);
     z-index: 500;
     text-align: center;
     pointer-events: none;
     opacity: 0;
-    transition: opacity 0.4s ease, transform 0.4s ease;
+    transition: opacity 0.25s ease, transform 0.25s ease;
 }
 #phase-banner.active {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1);
 }
 #phase-banner-title {
-    font-size: 3.5em;
+    font-size: 2.5em;
     font-weight: 900;
-    letter-spacing: 6px;
+    letter-spacing: 4px;
     text-transform: uppercase;
-    text-shadow: 0 0 40px currentColor, 0 0 80px currentColor, 0 4px 20px rgba(0,0,0,0.5);
-    animation: pulseBanner 0.8s ease infinite alternate;
+    text-shadow: 0 0 30px currentColor, 0 4px 16px rgba(0,0,0,0.5);
 }
 #phase-banner-sub {
-    font-size: 1em;
+    font-size: 0.9em;
     color: #94a3b8;
-    margin-top: 8px;
+    margin-top: 6px;
     letter-spacing: 2px;
     text-shadow: 0 2px 10px rgba(0,0,0,0.5);
-}
-@keyframes pulseBanner {
-    from { transform: scale(1); }
-    to { transform: scale(1.03); }
 }
 
 /* === Toast Notifications — flush right, respects panel when visible === */
@@ -2141,12 +2207,13 @@ body:has(#side-panel.active) #combat-log {
 .sup-title { font-size: 11px; font-weight: 700; color: #f1f5f9; flex: 1; }
 .sup-sp {
     font-size: 10px;
-    color: #fbbf24;
-    background: #0f172a;
-    border: 1px solid #fbbf2440;
+    color: #fde68a;
+    background: rgba(251,191,36,0.15);
+    border: 1px solid rgba(251,191,36,0.4);
     border-radius: 4px;
     padding: 1px 6px;
     white-space: nowrap;
+    font-weight: 700;
 }
 .sup-nodes {
     display: flex;
@@ -2240,11 +2307,147 @@ body:has(#side-panel.active) #combat-log {
 }
 
 /* ============================================================
+   PAUSE MENU OVERLAY
+   ============================================================ */
+#pause-overlay {
+    background: rgba(0,0,0,0.7);
+    flex-direction: column;
+    gap: 16px;
+    z-index: 600;
+    backdrop-filter: blur(6px);
+}
+#pause-overlay .pause-title {
+    font-size: 2em;
+    font-weight: 800;
+    color: #e2e8f0;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+}
+#pause-overlay .pause-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 220px;
+}
+#pause-overlay .pause-buttons .btn {
+    width: 100%;
+    text-align: center;
+}
+
+/* ============================================================
+   CONSUMABLE SELECTED STATE
+   ============================================================ */
+.inventory-item.consumable-selected {
+    border-color: #fbbf24;
+    background: rgba(251,191,36,0.15);
+    box-shadow: 0 0 10px rgba(251,191,36,0.25);
+    animation: consumablePulse 1.2s ease-in-out infinite;
+}
+@keyframes consumablePulse {
+    0%, 100% { box-shadow: 0 0 10px rgba(251,191,36,0.2); }
+    50% { box-shadow: 0 0 18px rgba(251,191,36,0.4); }
+}
+
+/* ============================================================
+   ITEM EQUIP — PROXIMITY TARGET HIGHLIGHT
+   ============================================================ */
+.item-targeting-mode {
+    cursor: crosshair !important;
+}
+
+/* ============================================================
+   TACTICAL ORDER — VALID TARGET HIGHLIGHT (3D glow handled in JS)
+   ============================================================ */
+.order-targeting-active .order-select-prompt {
+    animation: pulsePrompt 1s ease-in-out infinite;
+}
+
+/* ============================================================
+   COMBAT LOG IMPROVEMENTS
+   ============================================================ */
+.combat-log-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.combat-log-controls button {
+    background: none;
+    border: 1px solid transparent;
+    color: #64748b;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: all 0.15s;
+}
+.combat-log-controls button:hover {
+    color: #e2e8f0;
+    background: rgba(255,255,255,0.05);
+}
+.combat-log-controls button.active {
+    color: #a78bfa;
+    border-color: rgba(167,139,250,0.3);
+    background: rgba(167,139,250,0.1);
+}
+#combat-log-new-badge {
+    display: none;
+    background: #ef4444;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 8px;
+    margin-left: 6px;
+    animation: badgePulse 1s ease-in-out infinite;
+}
+#combat-log-new-badge.active { display: inline-block; }
+@keyframes badgePulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+#combat-log.scroll-paused #combat-log-scroll {
+    scroll-behavior: auto;
+}
+
+/* ============================================================
+   DRAG & DROP FEEDBACK
+   ============================================================ */
+.bench-slot.drag-source {
+    opacity: 0.4;
+    border-style: dashed;
+}
+.drag-ghost {
+    position: fixed;
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.85;
+    transform: scale(1.1);
+    filter: drop-shadow(0 4px 12px rgba(167,139,250,0.5));
+}
+
+/* ============================================================
+   CLICK TARGET MINIMUM SIZES
+   ============================================================ */
+.militia-order-btn {
+    min-height: 28px;
+    min-width: 44px;
+}
+.sup-order-btn {
+    min-height: 44px;
+}
+.order-option {
+    min-height: 40px;
+}
+.skill-option {
+    min-height: 44px;
+}
+
+/* ============================================================
    RESPONSIVE — small laptop / 1366px screen
    ============================================================ */
 @media (max-width: 1400px) {
     :root {
-        --panel-w: 232px;
+        --panel-w: 260px;
         --skill-w: 216px;
         --log-w:   240px;
         --uic-w:   196px;
@@ -2270,12 +2473,13 @@ body:has(#side-panel.active) #combat-log {
 
 @media (max-width: 1024px) {
     :root {
-        --panel-w: 188px;
+        --panel-w: 210px;
         --skill-w: 176px;
         --log-w:   190px;
         --uic-w:   162px;
         --bar-h:   70px;
         --hud-h:   40px;
+        --syn-h:   28px;
     }
     .roster-card { width: 72px; }
     .bench-slot  { width: 56px; height: 56px; }

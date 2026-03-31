@@ -42,6 +42,9 @@ function init() {
     if (typeof initSidePanelTabs === 'function') initSidePanelTabs();
     if (typeof initAvatarInput === 'function') initAvatarInput();
     if (typeof initCommandUI === 'function') initCommandUI();
+    if (typeof initPauseMenu === 'function') initPauseMenu();
+    if (typeof initSidePanelCollapse === 'function') initSidePanelCollapse();
+    if (typeof initDragGhostFeedback === 'function') initDragGhostFeedback();
 
     document.getElementById('btn-start').addEventListener('click', function() {
         startNewGame();
@@ -64,6 +67,8 @@ function init() {
         if (bench) bench.classList.remove('active');
         if (toolbar) toolbar.classList.remove('active');
         if (sidePanel) sidePanel.classList.remove('active');
+        var synBar = document.getElementById('hud-synergy-bar');
+        if (synBar) synBar.classList.remove('active');
         if (typeof startMenuMusic === 'function') startMenuMusic();
     });
 

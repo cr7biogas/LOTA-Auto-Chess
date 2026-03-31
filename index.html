@@ -56,13 +56,16 @@ window.onerror=function(msg,src,line){
     </div>
 </div>
 
+<!-- Synergy Bar (below HUD) -->
+<div id="hud-synergy-bar"></div>
+
 <!-- Icon Toolbar (right edge) -->
 <div id="icon-toolbar">
-    <button class="toolbar-icon" data-panel="gioco" title="Giocatori e Sinergie">&#x2694;</button>
-    <button class="toolbar-icon" data-panel="armata" title="Armata">&#x1F6E1;</button>
-    <button class="toolbar-icon" data-panel="zaino" title="Zaino">&#x1F392;</button>
-    <button class="toolbar-icon" id="btn-toggle-log" title="Combat Log">&#x1F4DC;</button>
-    <button class="toolbar-icon" id="btn-fullscreen" title="Schermo intero" onclick="toggleFullscreen()">&#x26F6;</button>
+    <button class="toolbar-icon" data-panel="gioco" data-label="Giocatori e Sinergie" title="Giocatori e Sinergie">&#x2694;</button>
+    <button class="toolbar-icon" data-panel="armata" data-label="Armata" title="Armata">&#x1F6E1;</button>
+    <button class="toolbar-icon" data-panel="zaino" data-label="Zaino" title="Zaino">&#x1F392;</button>
+    <button class="toolbar-icon" id="btn-toggle-log" data-label="Combat Log" title="Combat Log">&#x1F4DC;</button>
+    <button class="toolbar-icon" id="btn-fullscreen" data-label="Schermo intero" title="Schermo intero" onclick="toggleFullscreen()">&#x26F6;</button>
 </div>
 
 <!-- Loading Screen -->
@@ -137,6 +140,15 @@ window.onerror=function(msg,src,line){
     <button class="btn btn-gold" id="btn-restart">Nuova Partita</button>
 </div>
 
+<!-- Pause Menu Overlay -->
+<div id="pause-overlay" class="overlay">
+    <div class="pause-title">PAUSA</div>
+    <div class="pause-buttons">
+        <button class="btn" id="btn-resume">Riprendi</button>
+        <button class="btn btn-gold" id="btn-abandon">Abbandona Partita</button>
+    </div>
+</div>
+
 <!-- Unit Roster (always visible above bench) -->
 <div id="unit-roster"></div>
 
@@ -149,6 +161,7 @@ window.onerror=function(msg,src,line){
 
 <!-- Side Panel (right) -->
 <div id="side-panel">
+    <button id="side-panel-collapse" title="Comprimi/Espandi pannello">&#x25B6;</button>
     <!-- Selected unit info (always visible above tabs) -->
     <div id="selected-unit-section" class="panel-section" style="display:none">
         <div id="selected-unit-panel"></div>
@@ -235,8 +248,14 @@ window.onerror=function(msg,src,line){
 <!-- Combat Log -->
 <div id="combat-log">
     <div class="combat-log-header">
-        <span class="combat-log-title">Combat Log</span>
-        <button id="combat-log-toggle" title="Nascondi/Mostra">▼</button>
+        <span class="combat-log-title">Combat Log <span id="combat-log-new-badge">NUOVI</span></span>
+        <div class="combat-log-controls">
+            <button id="combat-log-pause" title="Pausa auto-scroll">&#x23F8;</button>
+            <button id="combat-log-filter-skill" class="active" data-filter="skill" title="Skill">&#x2728;</button>
+            <button id="combat-log-filter-death" class="active" data-filter="death" title="Morti">&#x2694;</button>
+            <button id="combat-log-filter-heal" class="active" data-filter="heal" title="Cure">&#x1F49A;</button>
+            <button id="combat-log-toggle" title="Nascondi/Mostra">&#x25BC;</button>
+        </div>
     </div>
     <div id="combat-log-scroll">
         <div id="combat-log-entries"></div>
