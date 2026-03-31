@@ -2,6 +2,84 @@
 // LOTA AUTO CHESS — combat.js — Combat engine (4-player FFA)
 // ============================================================
 
+// --- Per-frame smooth movement (called from renderFrame every frame) ---
+function updateFreeMovementFrame(dt, units) {
+    if (!units || units.length === 0) return;
+    var TU = (typeof TILE_UNIT !== 'undefined') ? TILE_UNIT : 1.0;
+    var MIN_SEP = (typeof UNIT_SEPARATION_DIST !== 'undefined') ? UNIT_SEPARATION_DIST : 0.45;
+
+    for (var i = 0; i < units.length; i++) {
+        var u = units[i];
+        if (!u.alive || !u._freeMove) continue;
+        if (u.isAvatar && u._smoothWX !== undefined) {
+            u.wx = u._smoothWX;
+            u.wz = u._smoothWZ;
+            continue;
+        }
+
+        var mt = u._moveTarget;
+        if (!mt) continue;
+
+        var dx = mt.wx - u.wx;
+        var dz = mt.wz - u.wz;
+        var dist = Math.sqrt(dx * dx + dz * dz);
+        var stopDist = mt.stopDist || 0;
+
+        if (dist > stopDist + 0.01) {
+            var speed = (u._moveSpeedEff || u.moveSpeed || 1.0) * TU;
+            var step = speed * dt;
+            // Don't overshoot
+            if (step > dist - stopDist) step = dist - stopDist;
+            u.wx += (dx / dist) * step;
+            u.wz += (dz / dist) * step;
+        }
+    }
+
+    // Lightweight separation pass (per-frame, small push)
+    for (var i = 0; i < units.length; i++) {
+        var a = units[i];
+        if (!a.alive || !a._freeMove) continue;
+        for (var j = i + 1; j < units.length; j++) {
+            var b = units[j];
+            if (!b.alive || !b._freeMove) continue;
+            var sdx = b.wx - a.wx;
+            var sdz = b.wz - a.wz;
+            var sd = Math.sqrt(sdx * sdx + sdz * sdz);
+            if (sd < MIN_SEP && sd > 0.01) {
+                var push = (MIN_SEP - sd) * 0.3 * dt * 10;
+                var nx = sdx / sd;
+                var nz = sdz / sd;
+                a.wx -= nx * push;
+                a.wz -= nz * push;
+                b.wx += nx * push;
+                b.wz += nz * push;
+            } else if (sd <= 0.01) {
+                a.wx += (Math.random() - 0.5) * 0.1;
+                a.wz += (Math.random() - 0.5) * 0.1;
+            }
+        }
+    }
+
+    // Sync grid from world position (less frequently - every ~5 frames)
+    if (!updateFreeMovementFrame._fc) updateFreeMovementFrame._fc = 0;
+    updateFreeMovementFrame._fc++;
+    if (updateFreeMovementFrame._fc % 5 === 0) {
+        for (var i = 0; i < units.length; i++) {
+            var u = units[i];
+            if (!u.alive || !u._freeMove) continue;
+            // Clamp to board
+            u.wx = Math.max(TU * 0.5, Math.min(BOARD_COLS * TU - TU * 0.5, u.wx));
+            u.wz = Math.max(TU * 0.5, Math.min(BOARD_ROWS * TU - TU * 0.5, u.wz));
+            var gc = Math.floor(u.wx / TU);
+            var gr = Math.floor(u.wz / TU);
+            if (isValidCell(gr, gc)) {
+                u.row = gr;
+                u.col = gc;
+            }
+        }
+    }
+}
+
 // --- Damage Pipeline ---
 function calculateDamage(attacker, defender, damageType) {
     let raw = attacker.atk * attacker.dmgMultiplier;
@@ -120,8 +198,8 @@ function applyDamage(unit, dmgResult, source) {
 
     // Skill: Counter damage (Muro di Lame)
     if (unit._counterDmgPercent && unit._counterDmgPercent > 0 && source && source.alive && dmg > 0) {
-        var dist = chebyshevDist(unit.row, unit.col, source.row, source.col);
-        if (dist <= 1) { // melee only
+        var dist = unitWorldDist(unit, source);
+        if (dist <= 1.3) { // melee only
             var counterDmg = Math.round(unit.atk * unit._counterDmgPercent);
             source.hp -= counterDmg;
             addDamageNumber(source, counterDmg, 'crit');
@@ -313,8 +391,9 @@ function processAttack(unit, enemies, allUnits, grid) {
     var target = selectTarget(unit, enemies, atkAllies);
     if (!target) return;
 
-    var dist = chebyshevDist(unit.row, unit.col, target.row, target.col);
-    if (dist > unit.range) return;
+    var TU_atk = (typeof TILE_UNIT !== 'undefined') ? TILE_UNIT : 1.0;
+    var dist = unitWorldDist(unit, target);
+    if (dist > unit.range * TU_atk + RANGE_BUFFER) return;
 
     unit.atkTimer = effectiveAtkSpeed;
     unit.atkAnim = 1.0;
@@ -870,73 +949,50 @@ function runCombatTick(teams, grid) {
         }
     }
 
-    // Step 2-4: Movement
-    var pendingMoves = [];
-
-    // Sync ALL human-controlled avatar grid positions from smooth world position
-    // Local avatar: moved by WASD. Remote avatars: moved by network sync.
-    // Both have _smoothWX/_smoothWZ set, so update grid for all of them.
+    // Step 2-4: Free Movement (continuous world-space)
+    var _TU = (typeof TILE_UNIT !== 'undefined') ? TILE_UNIT : 1.0;
     var _mySlot = (typeof window !== 'undefined' && window.mySlotId !== null && window.mySlotId !== undefined) ? window.mySlotId : 0;
+
+    // Sync avatars from smooth world position
     for (var ai = 0; ai < allUnits.length; ai++) {
         var avu = allUnits[ai];
         if (avu.isAvatar && avu.alive && avu._smoothWX !== undefined) {
-            var newCol = Math.floor(avu._smoothWX / (typeof TILE_UNIT !== 'undefined' ? TILE_UNIT : 1));
-            var newRow = Math.floor(avu._smoothWZ / (typeof TILE_UNIT !== 'undefined' ? TILE_UNIT : 1));
-            if (isValidCell(newRow, newCol) && (newRow !== avu.row || newCol !== avu.col)) {
-                grid[avu.row][avu.col] = null;
-                avu.row = newRow;
-                avu.col = newCol;
-                grid[newRow][newCol] = avu.id;
-            }
+            avu.wx = avu._smoothWX;
+            avu.wz = avu._smoothWZ;
+            syncUnitGridFromWorld(avu, grid);
         }
     }
 
+    // Calculate and store movement targets for per-frame interpolation
     for (var i = 0; i < allUnits.length; i++) {
         var unit = allUnits[i];
-        if (!unit.alive || hasEffect(unit, 'freeze') || hasEffect(unit, 'stun')) continue;
-
-        // Human-controlled avatars (local + remote synced) — skip AI auto movement
+        if (!unit.alive || hasEffect(unit, 'freeze') || hasEffect(unit, 'stun')) {
+            unit._moveTarget = null;
+            continue;
+        }
         if (unit.isAvatar && unit._smoothWX !== undefined) continue;
 
         var enemies = getEnemiesOf(unit, teams);
         var allies = getAlliesOf(unit, teams);
         var target = selectTarget(unit, enemies, allies);
 
-        // ORDER_MOVE: march toward destination even without an enemy target
-        var order = unit.tacticalOrder || ORDER_FREE;
-        if (!target && order === ORDER_MOVE && unit.tacticalMoveRow >= 0 && unit.tacticalMoveCol >= 0) {
-            var distToDest = chebyshevDist(unit.row, unit.col, unit.tacticalMoveRow, unit.tacticalMoveCol);
-            if (distToDest > 0) {
-                var step = bestStepToward(unit.row, unit.col, unit.tacticalMoveRow, unit.tacticalMoveCol, grid, unit.id);
-                if (step) pendingMoves.push({ unit: unit, r: step.r, c: step.c });
-            }
-            continue;
-        }
+        if (target) unit.targetUnitId = target.id;
 
-        if (!target) continue;
-        unit.targetUnitId = target.id;
-        var moveTarget = calculateMoveTarget(unit, target, grid, allies);
-        if (moveTarget) {
-            pendingMoves.push({ unit: unit, r: moveTarget.r, c: moveTarget.c });
-        }
+        var moveTarget = calculateFreeMoveTarget(unit, target, allies, allUnits);
+        // Store move target for per-frame smooth movement
+        unit._moveTarget = moveTarget;
+        // Also store effective speed for this tick
+        var speed = unit.moveSpeed || 1.0;
+        if (unit.furiaActive) speed *= 1.5;
+        unit._moveSpeedEff = speed;
     }
 
-    // Resolve collisions
-    var claimed = {};
+    // Separation + clamping + grid sync now handled per-frame by updateFreeMovementFrame()
+    // Just sync grid once per tick for game logic consistency
     for (var i = 0; i < allUnits.length; i++) {
-        if (allUnits[i].alive) claimed[allUnits[i].row + ',' + allUnits[i].col] = true;
-    }
-    for (var i = 0; i < pendingMoves.length; i++) {
-        var move = pendingMoves[i];
-        var key = move.r + ',' + move.c;
-        if (!claimed[key]) {
-            delete claimed[move.unit.row + ',' + move.unit.col];
-            grid[move.unit.row][move.unit.col] = null;
-            move.unit.row = move.r;
-            move.unit.col = move.c;
-            grid[move.r][move.c] = move.unit.id;
-            claimed[key] = true;
-        }
+        var u = allUnits[i];
+        if (!u.alive || !u._freeMove) continue;
+        syncUnitGridFromWorld(u, grid);
     }
 
     // Step 4b: Check traps after movement
@@ -974,10 +1030,10 @@ function runCombatTick(teams, grid) {
             var nearest = null, nd = 999;
             for (var ce = 0; ce < cEnemies.length; ce++) {
                 if (!cEnemies[ce].alive) continue;
-                var d = chebyshevDist(cu.row, cu.col, cEnemies[ce].row, cEnemies[ce].col);
+                var d = unitWorldDist(cu, cEnemies[ce]);
                 if (d < nd) { nd = d; nearest = cEnemies[ce]; }
             }
-            if (nearest && nd <= 4) {
+            if (nearest && nd <= 4.5) {
                 nearest.effects.push({ type: 'speed_reduction', value: 0.20, ticksLeft: 3, stacking: 'refresh' });
                 nearest.atkSpeed = Math.min(nearest.atkSpeed * 1.20, nearest.baseAtkSpeed * 2);
             }
@@ -987,7 +1043,7 @@ function runCombatTick(teams, grid) {
             for (var pni = 0; pni < cEnemies.length; pni++) {
                 var _pe = cEnemies[pni];
                 if (!_pe.alive) continue;
-                var _pd = chebyshevDist(cu.row, cu.col, _pe.row, _pe.col);
+                var _pd = unitWorldDist(cu, _pe);
                 if (_pd < pd1) { pn2 = pn1; pd2 = pd1; pn1 = _pe; pd1 = _pd; }
                 else if (_pd < pd2) { pn2 = _pe; pd2 = _pd; }
             }
@@ -997,7 +1053,7 @@ function runCombatTick(teams, grid) {
             // AOE damage to all enemies within 3 cells
             for (var ae = 0; ae < cEnemies.length; ae++) {
                 if (!cEnemies[ae].alive) continue;
-                if (chebyshevDist(cu.row, cu.col, cEnemies[ae].row, cEnemies[ae].col) <= 3) {
+                if (unitWorldDist(cu, cEnemies[ae]) <= 3.5) {
                     var aoeDmg = Math.round(cu.atk * 0.4);
                     cEnemies[ae].hp -= aoeDmg;
                     if (typeof addDamageNumber === 'function') addDamageNumber(cEnemies[ae], aoeDmg, 'magic');
@@ -1214,6 +1270,7 @@ function initCombat(playersList, creepUnits, campCreeps) {
             if (typeof applyCurseDebuffs === 'function') applyCurseDebuffs(clone);
             if (typeof applySurvivalCombatBuffs === 'function') applySurvivalCombatBuffs(clone);
             grid[clone.row][clone.col] = clone.id;
+            initUnitWorldPos(clone);
             teams[String(pSlot)].push(clone);
         }
     }
@@ -1236,6 +1293,7 @@ function initCombat(playersList, creepUnits, campCreeps) {
             c.atkAnim = 0;
             c.hitAnim = 0;
             grid[c.row][c.col] = c.id;
+            initUnitWorldPos(c);
             teams['creep'].push(c);
         }
     }
@@ -1251,6 +1309,7 @@ function initCombat(playersList, creepUnits, campCreeps) {
             var teamKey = campId.startsWith('boss_') ? campId : 'camp_' + campId;
             if (!teams[teamKey]) teams[teamKey] = [];
             grid[cc.row][cc.col] = cc.id;
+            initUnitWorldPos(cc);
             teams[teamKey].push(cc);
         }
     }

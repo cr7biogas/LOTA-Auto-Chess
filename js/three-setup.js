@@ -26,9 +26,11 @@ function initThreeScene() {
     threeRenderer.setPixelRatio(1);
     var _rs = 0.75;  // render scale: 75% risoluzione interna, canvas resta full-screen via CSS
     threeRenderer.setSize(window.innerWidth * _rs, window.innerHeight * _rs, false);
-    threeRenderer.shadowMap.enabled = false; // PERF: shadow pass troppo costoso con 7000+ draw calls
+    threeRenderer.shadowMap.enabled = true;
+    threeRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
     threeRenderer.toneMapping = THREE.ACESFilmicToneMapping;
-    threeRenderer.toneMappingExposure = 1.15;
+    threeRenderer.toneMappingExposure = 1.2;
+    threeRenderer.outputColorSpace = THREE.SRGBColorSpace;
     threeCanvas = threeRenderer.domElement;
     threeCanvas.id = 'three-canvas';
     threeCanvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;';
@@ -36,35 +38,47 @@ function initThreeScene() {
 
     // ---- scene ----
     threeScene = new THREE.Scene();
-    threeScene.background = new THREE.Color('#87ceeb'); // bright sky blue
-    threeScene.fog = null;  // nebbia solo in vista FPS
+    threeScene.background = new THREE.Color('#a8d8ea'); // soft sky blue (Polytope style)
+    // Atmospheric fog — soft distance fade like the screenshot
+    threeScene.fog = new THREE.FogExp2('#c8e6d0', 0.012);
 
     // ---- camera (orthographic isometric) ----
     _setupCamera();
 
-    // ---- lights ----
-    // ambient — warm bright
-    threeScene.add(new THREE.AmbientLight('#c8c0a8', 0.85));
-    // key light (golden sunlight, like Preview_1)
-    var key = new THREE.DirectionalLight('#fff4d6', 1.3);
-    key.position.set(BOARD_CX + 10, 18, BOARD_CZ - 8);
+    // ---- lights (Polytope-style warm sunlight) ----
+    // Hemisphere light — sky blue from above, warm green from ground bounce
+    var hemi = new THREE.HemisphereLight('#b4d7e8', '#7ab648', 0.6);
+    threeScene.add(hemi);
+    // Ambient — soft warm fill
+    threeScene.add(new THREE.AmbientLight('#d4cbb8', 0.5));
+    // Key light — warm golden sunlight with soft shadows
+    var key = new THREE.DirectionalLight('#fff4d6', 1.4);
+    key.position.set(BOARD_CX + 12, 22, BOARD_CZ - 10);
     key.castShadow = true;
-    key.shadow.mapSize.set(1024, 1024);
+    key.shadow.mapSize.set(2048, 2048);
     key.shadow.camera.near  = 1;
-    key.shadow.camera.far   = 100;
-    key.shadow.camera.left  = -44;
-    key.shadow.camera.right = 44;
-    key.shadow.camera.top   = 44;
-    key.shadow.camera.bottom = -44;
-    key.shadow.bias = -0.001;
+    key.shadow.camera.far   = 120;
+    key.shadow.camera.left  = -50;
+    key.shadow.camera.right = 50;
+    key.shadow.camera.top   = 50;
+    key.shadow.camera.bottom = -50;
+    key.shadow.bias = -0.0008;
+    key.shadow.normalBias = 0.02;
+    key.shadow.radius = 3;
     threeScene.add(key);
-    // fill (sky blue, softer)
-    var fill = new THREE.DirectionalLight('#8cb8e0', 0.4);
-    fill.position.set(BOARD_CX - 8, 10, BOARD_CZ + 10);
+    // Fill light — sky blue, softer (mimics sky bounce)
+    var fill = new THREE.DirectionalLight('#8cb8e0', 0.45);
+    fill.position.set(BOARD_CX - 10, 12, BOARD_CZ + 12);
     threeScene.add(fill);
-    // PERF: rim light removed — key + fill sufficient
+    // Back rim — subtle warm glow from behind
+    var rim = new THREE.DirectionalLight('#ffe0a0', 0.25);
+    rim.position.set(BOARD_CX - 5, 8, BOARD_CZ - 20);
+    threeScene.add(rim);
 
     // Ground plane moved to _createBaseGround() in three-board.js
+
+    // ---- post-processing (bloom) ----
+    _initPostProcessing();
 
     // raycaster
     threeRaycaster = new THREE.Raycaster();
@@ -310,11 +324,76 @@ function _resizeThree() {
     var w = window.innerWidth, h = window.innerHeight;
     var _rs = 0.75;
     threeRenderer.setSize(w * _rs, h * _rs, false);
+    if (typeof _resizeComposer === 'function') _resizeComposer(w * _rs, h * _rs);
     if (!_tacticalView && _fpvCamera) {
         _fpvCamera.aspect = w / h;
         _fpvCamera.updateProjectionMatrix();
     }
     if (threeCamera) _updateCameraFrustum();
+}
+
+// =============================================
+// =============================================
+// POST-PROCESSING — Bloom + FXAA (Polytope-quality look)
+// =============================================
+var _composer = null;
+
+function _initPostProcessing() {
+    if (typeof EffectComposer === 'undefined' || typeof RenderPass === 'undefined') {
+        console.warn('⚠️  PostProcessing modules not loaded — skipping bloom');
+        return;
+    }
+    try {
+        var w = threeRenderer.domElement.width;
+        var h = threeRenderer.domElement.height;
+        _composer = new EffectComposer(threeRenderer);
+
+        // Scene render pass
+        var renderPass = new RenderPass(threeScene, threeCamera);
+        _composer.addPass(renderPass);
+
+        // Bloom — soft glow on bright areas (Unreal-style)
+        if (typeof UnrealBloomPass !== 'undefined') {
+            var bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.35, 0.6, 0.85);
+            // strength=0.35, radius=0.6, threshold=0.85
+            bloom.name = 'bloom';
+            _composer.addPass(bloom);
+        }
+
+        // FXAA anti-aliasing
+        if (typeof ShaderPass !== 'undefined' && typeof FXAAShader !== 'undefined') {
+            var fxaa = new ShaderPass(FXAAShader);
+            fxaa.material.uniforms['resolution'].value.set(1/w, 1/h);
+            fxaa.name = 'fxaa';
+            _composer.addPass(fxaa);
+        }
+
+        console.log('✓ PostProcessing: Bloom + FXAA enabled');
+    } catch(e) {
+        console.warn('⚠️  PostProcessing init error:', e);
+        _composer = null;
+    }
+}
+
+// Update composer camera when active camera changes
+function _updateComposerCamera(cam) {
+    if (!_composer) return;
+    var passes = _composer.passes;
+    for (var i = 0; i < passes.length; i++) {
+        if (passes[i].camera) passes[i].camera = cam;
+    }
+}
+
+// Resize composer on window resize
+function _resizeComposer(w, h) {
+    if (!_composer) return;
+    _composer.setSize(w, h);
+    var passes = _composer.passes;
+    for (var i = 0; i < passes.length; i++) {
+        if (passes[i].name === 'fxaa' && passes[i].material && passes[i].material.uniforms['resolution']) {
+            passes[i].material.uniforms['resolution'].value.set(1/w, 1/h);
+        }
+    }
 }
 
 // =============================================
@@ -350,10 +429,10 @@ var CAM_ORBIT_SPEED = 0.005;    // radians per pixel dragged
 // Avatar smooth world position (continuous movement)
 var _avatarWX = 0;
 var _avatarWZ = 0;
-var _avatarSpeedWalk = 1.2;    // world units/s while walking
-var _avatarSpeedRun  = 3.5;    // world units/s while running
+var _avatarSpeedWalk = 2.0;    // world units/s while walking
+var _avatarSpeedRun  = 4.0;    // world units/s while running
 var _avatarRunning   = false;  // toggled by backslash key
-var _avatarSpeed     = 2.5;    // current speed (updated each frame)
+var _avatarSpeed     = 2.0;    // current speed (updated each frame)
 var _avatarInited    = false;
 
 // Prevent camera from lerping from (0,0,0) on first frame
@@ -365,8 +444,8 @@ var _mouseLookActive = false;
 var _mouseLookPitch  = 0;      // independent vertical aim, -1.2 (down) to +1.2 (up)
 
 // Fog presets
-var _FOG_TACTICAL = { type: 'none' };
-var _FOG_FPS      = { type: 'linear', color: '#87ceeb', near: 60, far: 130 };
+var _FOG_TACTICAL = { type: 'exp2', color: '#c8e6d0', density: 0.008 };
+var _FOG_FPS      = { type: 'exp2', color: '#c8e6d0', density: 0.015 };
 
 function _applyFog(preset) {
     if (!threeScene) return;
@@ -459,6 +538,7 @@ function _initCameraOrbit() {
         if (target.closest) {
             if (target.closest('#hud') ||
                 target.closest('#side-panel') ||
+                target.closest('#icon-toolbar') ||
                 target.closest('#bench-panel') ||
                 target.closest('#combat-log') ||
                 target.closest('#avatar-hud') ||
@@ -608,10 +688,9 @@ function updateAvatarMovement(dt) {
             avatar.col = newCol;
         }
     } else {
-        // Gently pull smooth pos toward current cell center (snap when still)
-        var cellCenter = cellToWorld(avatar.row, avatar.col);
-        _avatarWX += (cellCenter.x - _avatarWX) * 0.05;
-        _avatarWZ += (cellCenter.z - _avatarWZ) * 0.05;
+        // No input: avatar stays exactly where it is (no cell-center snap)
+        // Just decelerate smoothly
+        _avatarSpeed *= 0.85;
     }
 
     // Store smooth pos on avatar for 3D model to use

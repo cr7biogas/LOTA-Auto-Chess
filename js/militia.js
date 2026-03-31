@@ -255,6 +255,7 @@ function saveMilitiaAfterCombat(playersList, teams) {
                         // Save position and HP
                         militia.row = clone.row;
                         militia.col = clone.col;
+                        if (typeof initUnitWorldPos === 'function') initUnitWorldPos(militia);
                         militia.px = 0;
                         militia.py = 0;
                         var hpRatio = clone.hp / clone.maxHp;

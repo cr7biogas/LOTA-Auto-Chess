@@ -30,12 +30,12 @@ window.onerror=function(msg,src,line){
 <div id="hud">
     <div class="hud-section">
         <div class="hud-item">
+            <span class="hud-phase" id="hud-phase">PLANNING</span>
+        </div>
+        <div class="hud-item">
             <span class="hud-label">Round</span>
             <span class="hud-value hud-round" id="hud-round">1</span>
             <span class="hud-label">/ 50</span>
-        </div>
-        <div class="hud-item">
-            <span class="hud-phase" id="hud-phase">PLANNING</span>
         </div>
         <div class="hud-item" id="hud-timer-wrap" style="display:none">
             <span class="hud-label">Timer</span>
@@ -52,15 +52,17 @@ window.onerror=function(msg,src,line){
             <span class="hud-value hud-hp" id="hud-hp">30</span>
             <span class="hud-label">/ 30</span>
         </div>
-        <div class="hud-item">
-            <span class="hud-label">Totale Oro</span>
-            <span class="hud-value hud-gold" id="hud-total-gold">0</span>
-        </div>
-    </div>
-    <div class="hud-section">
         <div class="hud-item" id="hud-synergies"></div>
-        <button id="btn-fullscreen" title="Schermo intero" onclick="toggleFullscreen()">&#x26F6;</button>
     </div>
+</div>
+
+<!-- Icon Toolbar (right edge) -->
+<div id="icon-toolbar">
+    <button class="toolbar-icon" data-panel="gioco" title="Giocatori e Sinergie">&#x2694;</button>
+    <button class="toolbar-icon" data-panel="armata" title="Armata">&#x1F6E1;</button>
+    <button class="toolbar-icon" data-panel="zaino" title="Zaino">&#x1F392;</button>
+    <button class="toolbar-icon" id="btn-toggle-log" title="Combat Log">&#x1F4DC;</button>
+    <button class="toolbar-icon" id="btn-fullscreen" title="Schermo intero" onclick="toggleFullscreen()">&#x26F6;</button>
 </div>
 
 <!-- Loading Screen -->
@@ -281,14 +283,24 @@ window.onerror=function(msg,src,line){
   import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
   import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
   import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+  import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+  import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+  import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+  import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+  import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
   window.GLTFLoader = GLTFLoader;
   window.OBJLoader = OBJLoader;
   window.MTLLoader = MTLLoader;
   window.SkeletonUtils = SkeletonUtils;
+  window.EffectComposer = EffectComposer;
+  window.RenderPass = RenderPass;
+  window.UnrealBloomPass = UnrealBloomPass;
+  window.ShaderPass = ShaderPass;
+  window.FXAAShader = FXAAShader;
   if (typeof THREE !== 'undefined') THREE.GLTFLoader = GLTFLoader;
   window._esModulesReady = true;
   window.dispatchEvent(new Event('es-modules-ready'));
-  console.log('✓ GLTFLoader + OBJLoader + SkeletonUtils ready');
+  console.log('✓ GLTFLoader + OBJLoader + SkeletonUtils + PostProcessing ready');
 </script>
 
 <!-- Scripts (dependency order) -->

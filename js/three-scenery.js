@@ -42,6 +42,8 @@ function _loadSceneryElements() {
     tasks.push(_createBiomeTrees());
     // Dense interior decorations: trees, grass, rocks, center tree ring
     tasks.push(_createDenseInterior());
+    // Polytope Studio nature models around the battlefield
+    tasks.push(_createPolytopeNature());
 
     Promise.all(tasks)
         .then(function() {
@@ -704,6 +706,99 @@ function _scatterGroundDecor() {
     }).catch(function(err) {
         console.warn('Ground decor failed:', err);
     });
+}
+
+// ====================================================================
+//  POLYTOPE STUDIO NATURE — high-quality models around battlefield
+// ====================================================================
+
+function _createPolytopeNature() {
+    var basePath = 'models/nature/';
+    var cx = BOARD_CX;
+    var cz = BOARD_CZ;
+    var boardRadius = BOARD_ROWS * TILE_UNIT * 0.5;
+
+    // Model definitions: [file, count, minDist, maxDist, scaleMin, scaleMax, yOffset]
+    var models = [
+        { file: 'SM_Fruit_Tree_01_green.glb', count: 14, minR: boardRadius + 2, maxR: boardRadius + 18, sMin: 0.25, sMax: 0.4, y: 0 },
+        { file: 'SM_Pine_Tree_03_green.glb',  count: 12, minR: boardRadius + 3, maxR: boardRadius + 20, sMin: 0.2, sMax: 0.35, y: 0 },
+        { file: 'SM_Fruit_Tree_01_apples.glb', count: 6, minR: boardRadius + 4, maxR: boardRadius + 15, sMin: 0.25, sMax: 0.35, y: 0 },
+        { file: 'SM_Fruit_Tree_01_stump.glb',  count: 5, minR: boardRadius + 2, maxR: boardRadius + 12, sMin: 0.3, sMax: 0.5, y: 0 },
+        { file: 'SM_Generic_Rock_01.glb',      count: 12, minR: boardRadius + 1, maxR: boardRadius + 16, sMin: 0.4, sMax: 0.8, y: 0 },
+        { file: 'SM_Menhir_Rock_02.glb',       count: 4,  minR: boardRadius + 5, maxR: boardRadius + 18, sMin: 0.3, sMax: 0.5, y: 0 },
+        { file: 'SM_River_Rock_Pile_02.glb',   count: 8,  minR: boardRadius + 1, maxR: boardRadius + 14, sMin: 0.5, sMax: 0.9, y: 0 },
+        { file: 'SM_Ore_Rock_01.glb',          count: 4,  minR: boardRadius + 6, maxR: boardRadius + 20, sMin: 0.3, sMax: 0.5, y: 0 },
+        { file: 'SM_Generic_Shrub_01_green.glb', count: 18, minR: boardRadius + 1, maxR: boardRadius + 15, sMin: 0.3, sMax: 0.6, y: 0 },
+        { file: 'SM_Grass_02.glb',             count: 30, minR: boardRadius + 0.5, maxR: boardRadius + 12, sMin: 0.4, sMax: 0.8, y: 0 },
+        { file: 'SM_Poppy_02.glb',             count: 15, minR: boardRadius + 1, maxR: boardRadius + 10, sMin: 0.5, sMax: 0.9, y: 0 },
+        { file: 'SM_Caesars_Mushroom_01.glb',  count: 8,  minR: boardRadius + 1, maxR: boardRadius + 8, sMin: 0.5, sMax: 1.0, y: 0 }
+    ];
+
+    var loadPromises = models.map(function(def) {
+        return _loadGLBModel(basePath + def.file).then(function(template) {
+            // Normalize template size
+            var box = new THREE.Box3().setFromObject(template);
+            var size = new THREE.Vector3();
+            box.getSize(size);
+            var maxDim = Math.max(size.x, size.y, size.z);
+            if (maxDim > 0) template.scale.multiplyScalar(1.0 / maxDim);
+            // Re-center
+            box.setFromObject(template);
+            var center = new THREE.Vector3();
+            box.getCenter(center);
+            template.position.sub(center);
+            template.position.y = -box.min.y;
+
+            // Enhance materials + fix alpha + enable shadows
+            template.traverse(function(ch) {
+                if (ch.isMesh) {
+                    ch.castShadow = true;
+                    ch.receiveShadow = true;
+                    if (ch.material) {
+                        // Fix invisible foliage (alpha=0 from Unreal export)
+                        if (ch.material.opacity < 0.1) ch.material.opacity = 1.0;
+                        if (ch.material.color) {
+                            var c = ch.material.color;
+                            if (c.r < 0.05 && c.g < 0.05 && c.b < 0.05) {
+                                // Black fallback = missing texture, give natural color
+                                ch.material.color.setHex(0x5a8a3a);
+                            }
+                        }
+                        // Foliage: enable alpha test for leaf cutouts
+                        if (ch.material.map && ch.material.transparent) {
+                            ch.material.alphaTest = 0.3;
+                            ch.material.side = THREE.DoubleSide;
+                            ch.material.depthWrite = true;
+                        }
+                        // Better PBR values for nature
+                        if (ch.material.metalness > 0.3) ch.material.metalness = 0.05;
+                        ch.material.roughness = Math.max(ch.material.roughness, 0.5);
+                    }
+                }
+            });
+
+            // Place instances around the board
+            for (var i = 0; i < def.count; i++) {
+                var angle = Math.random() * Math.PI * 2;
+                var dist = def.minR + Math.random() * (def.maxR - def.minR);
+                var px = cx + Math.cos(angle) * dist;
+                var pz = cz + Math.sin(angle) * dist;
+                var scale = def.sMin + Math.random() * (def.sMax - def.sMin);
+
+                var instance = template.clone();
+                instance.scale.multiplyScalar(scale);
+                instance.position.set(px, def.y, pz);
+                instance.rotation.y = Math.random() * Math.PI * 2;
+                threeScene.add(instance);
+            }
+
+            console.log('🌿 Placed ' + def.count + 'x ' + def.file);
+        }).catch(function(err) {
+            console.warn('⚠️  Failed to load ' + def.file + ':', err.message || err);
+        });
+    });
+
+    return Promise.all(loadPromises);
 }
 
 // ====================================================================

@@ -65,9 +65,10 @@ function _loadAvatarGLB(classId, callback) {
         return;
     }
 
-    console.log('📦 Loading avatar GLB: models/avatars/' + classId + '.glb');
+    var avatarUrl = 'models/avatars/' + classId + '.glb?v=' + Date.now();
+    console.log('📦 Loading avatar GLB: ' + avatarUrl);
     var loader = new GLTFLoaderClass();
-    loader.load('models/avatars/' + classId + '.glb',
+    loader.load(avatarUrl,
         function(gltf) {
             console.log('✓ Avatar GLB loaded: ' + classId, gltf.scene);
 
@@ -1973,6 +1974,184 @@ function _createStrategaTargetCircle(radius) {
     return g;
 }
 
+// ─── Load Kenney character GLB (guerriero) — native skeleton + 32 animations ──
+function _buildKenneyAvatar(g, classId, col) {
+    var fbMat = _mat(col, { emissive: col, emissiveI: 0.3 });
+    var fbBody = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.45, 8), fbMat);
+    fbBody.position.y = 0.25; fbBody.name = 'avatarFallback';
+    g.add(fbBody);
+
+    _loadAvatarGLB(classId, function(data) {
+        if (!data) { console.error('❌ ' + classId + '.glb non caricato'); return; }
+
+        var fallback = g.getObjectByName('avatarFallback');
+        if (fallback) g.remove(fallback);
+
+        var SU = window.SkeletonUtils;
+        var cloned = SU ? SU.clone(data.scene) : data.scene.clone();
+
+        var h = data.naturalHeight > 0 ? data.naturalHeight : 1.0;
+        var s = 0.07 / h;
+        cloned.scale.set(s, s, s);
+        cloned.position.set(0, 0, 0);
+
+        cloned.updateMatrixWorld(true);
+        var box = new THREE.Box3().setFromObject(cloned);
+        cloned.position.y = isFinite(box.min.y) ? -box.min.y : (h * s) * 0.5;
+
+        cloned.traverse(function(node) {
+            node.visible = true;
+            if (node.isMesh) { node.castShadow = false; node.receiveShadow = false; }
+        });
+
+        g.add(cloned);
+        g.visible = true;
+
+        // Melee arc indicator
+        var meleeArcMesh = _createMeleeArcMesh(1.5, 90, '#60a5fa', 0.10);
+        meleeArcMesh.position.y = 0.005;
+        meleeArcMesh.name = 'meleeArc';
+        meleeArcMesh.visible = false;
+        meleeArcMesh._currentStep = 1;
+        g.add(meleeArcMesh);
+
+        // Setup native animations from the Kenney GLB
+        var clips = data.animations || [];
+        console.log('🎬 Kenney ' + classId + ': ' + clips.length + ' native clips');
+        _setupKenneyMixer(g, cloned, clips);
+
+        // Update threeUnitModels feetOffset
+        for (var uid in threeUnitModels) {
+            if (threeUnitModels[uid] && threeUnitModels[uid].group === g) {
+                threeUnitModels[uid].feetOffset = TILE_Y * 2;
+                threeUnitModels[uid].targetPos.y = TILE_Y * 2;
+                break;
+            }
+        }
+
+        console.log('⚔️  Kenney guerriero caricato. Scale:', s.toFixed(3));
+    });
+}
+
+// ─── Setup AnimationMixer for Kenney models (native clip names) ──
+function _setupKenneyMixer(group, meshRoot, clips) {
+    var mixer = new THREE.AnimationMixer(meshRoot);
+    group._avatarAnimator = {
+        mixer: mixer,
+        clips: clips,
+        actions: {},
+        currentAction: null,
+        idleClipName:       null,
+        walkClipName:       null,
+        runClipName:        null,
+        sword1ClipName:     null,
+        sword2ClipName:     null,
+        swordFinClipName:   null,
+        swordRegClipName:   null,
+        colpoClipName:      null,
+        gridoClipName:      null,
+        furiaEnterClipName: null,
+        furiaIdleClipName:  null,
+        attacking:          false,
+        attackTimer:        0,
+        furiaActive:        false
+    };
+
+    // Map Kenney clip names to animator slots
+    var idleClip  = _findClipByKeywords(clips, ['idle']);
+    var walkClip  = _findClipByKeywords(clips, ['walk']);
+    var runClip   = _findClipByKeywords(clips, ['sprint']);
+    var atkR      = _findClipByKeywords(clips, ['attack-melee-right']);
+    var atkL      = _findClipByKeywords(clips, ['attack-melee-left']);
+    var kickR     = _findClipByKeywords(clips, ['attack-kick-right']);
+    var dieClip   = _findClipByKeywords(clips, ['die']);
+
+    console.log('🎬 Kenney Idle:', idleClip ? idleClip.name : 'NONE');
+    console.log('🎬 Kenney Walk:', walkClip ? walkClip.name : 'NONE');
+    console.log('🎬 Kenney AtkR:', atkR ? atkR.name : 'NONE');
+
+    // Idle
+    if (idleClip) {
+        var a = mixer.clipAction(idleClip);
+        a.loop = THREE.LoopRepeat;
+        group._avatarAnimator.actions[idleClip.name] = a;
+        group._avatarAnimator.idleClipName = idleClip.name;
+    }
+    // Walk
+    if (walkClip && walkClip !== idleClip) {
+        var a = mixer.clipAction(walkClip);
+        a.loop = THREE.LoopRepeat;
+        group._avatarAnimator.actions[walkClip.name] = a;
+        group._avatarAnimator.walkClipName = walkClip.name;
+    }
+    // Run (sprint)
+    if (runClip && runClip !== walkClip) {
+        var a = mixer.clipAction(runClip);
+        a.loop = THREE.LoopRepeat;
+        group._avatarAnimator.actions[runClip.name] = a;
+        group._avatarAnimator.runClipName = runClip.name;
+    }
+    // Sword attacks → melee-right / melee-left / kick
+    if (atkR) {
+        var a = mixer.clipAction(atkR);
+        a.loop = THREE.LoopOnce; a.clampWhenFinished = true; a.timeScale = 1.5;
+        group._avatarAnimator.actions[atkR.name] = a;
+        group._avatarAnimator.sword1ClipName   = atkR.name;
+        group._avatarAnimator.swordRegClipName = atkR.name;
+    }
+    if (atkL) {
+        var a = mixer.clipAction(atkL);
+        a.loop = THREE.LoopOnce; a.clampWhenFinished = true; a.timeScale = 1.5;
+        group._avatarAnimator.actions[atkL.name] = a;
+        group._avatarAnimator.sword2ClipName   = atkL.name;
+        group._avatarAnimator.swordFinClipName = atkL.name;
+    }
+    // Colpo Devastante → kick (heavy blow feel)
+    if (kickR) {
+        var a = mixer.clipAction(kickR);
+        a.loop = THREE.LoopOnce; a.clampWhenFinished = true; a.timeScale = 0.8;
+        group._avatarAnimator.actions['colpo_devastante'] = a;
+        group._avatarAnimator.colpoClipName = 'colpo_devastante';
+    }
+    // Grido di Guerra → attack-melee-left (dramatic gesture)
+    if (atkL) {
+        var grido = atkL.clone();
+        grido.name = 'grido_guerra';
+        var a = mixer.clipAction(grido);
+        a.loop = THREE.LoopOnce; a.clampWhenFinished = true; a.timeScale = 0.7;
+        group._avatarAnimator.actions['grido_guerra'] = a;
+        group._avatarAnimator.gridoClipName = 'grido_guerra';
+    }
+    // Furia Immortale → sprint as power-up stance
+    if (runClip) {
+        var furiaEnt = runClip.clone();
+        furiaEnt.name = 'furia_enter';
+        var a = mixer.clipAction(furiaEnt);
+        a.loop = THREE.LoopOnce; a.clampWhenFinished = true; a.timeScale = 2.0;
+        group._avatarAnimator.actions['furia_enter'] = a;
+        group._avatarAnimator.furiaEnterClipName = 'furia_enter';
+
+        var furiaIdl = runClip.clone();
+        furiaIdl.name = 'furia_idle';
+        var a2 = mixer.clipAction(furiaIdl);
+        a2.loop = THREE.LoopRepeat; a2.timeScale = 1.5;
+        group._avatarAnimator.actions['furia_idle'] = a2;
+        group._avatarAnimator.furiaIdleClipName = 'furia_idle';
+    }
+    // Die animation (for death sequence)
+    if (dieClip) {
+        var a = mixer.clipAction(dieClip);
+        a.loop = THREE.LoopOnce; a.clampWhenFinished = true;
+        group._avatarAnimator.actions[dieClip.name] = a;
+    }
+
+    // Start idle
+    if (idleClip) {
+        _playAvatarAnimation(group, idleClip.name);
+        console.log('🎬 ▶ Kenney idle avviato:', idleClip.name);
+    }
+}
+
 // ─── Load outfit GLB + borrow UAL1 animations ────────────────
 function _buildOutfitAvatar(g, classId, col) {
     // Fallback geometry while loading
@@ -2008,7 +2187,9 @@ function _buildOutfitAvatar(g, classId, col) {
         g.visible = true;
 
         // Attach weapon per class
-        if (classId === 'stratega') {
+        if (classId === 'guerriero') {
+            _attachSwordToHand(g, cloned, s);
+        } else if (classId === 'stratega') {
             _attachSpearToHand(g, cloned, s);
         } else if (classId === 'stregone') {
             _attachStaffToHand(g, cloned, s, '#a855f7');
@@ -2016,10 +2197,10 @@ function _buildOutfitAvatar(g, classId, col) {
             _attachStaffToHand(g, cloned, s, '#22c55e');
         }
 
-        // Melee arc indicator — class-specific initial range/arc
         // Melee arc indicator — NOT for stratega (uses target circle instead)
         if (classId !== 'stratega') {
-            var _arcDefs = { stregone: { r: 4.0, deg: 45, col: '#c084fc' },
+            var _arcDefs = { guerriero: { r: 1.5, deg: 90, col: '#60a5fa' },
+                             stregone: { r: 4.0, deg: 45, col: '#c084fc' },
                              mistico:  { r: 3.0, deg: 70, col: '#4ade80' } };
             var _ad = _arcDefs[classId] || { r: 2.0, deg: 90, col: '#60a5fa' };
             var meleeArcMesh = _createMeleeArcMesh(_ad.r, _ad.deg, _ad.col, 0.10);
@@ -2039,6 +2220,10 @@ function _buildOutfitAvatar(g, classId, col) {
                 console.log('🎬 ' + classId + ': ' + clips.length + ' UAL1 clips applicati. Scale:', s.toFixed(3));
             } else {
                 console.warn('⚠️  ' + classId + ': nessuna animazione UAL1 disponibile');
+            }
+            // Guerriero: load UAL2 combo clips (Sword_Regular_A/B/Combo)
+            if (classId === 'guerriero') {
+                _loadUAL2ComboClips(g);
             }
         });
 
@@ -2061,90 +2246,8 @@ function _buildAvatar(unit) {
     var col = cls ? cls.color.fill : '#3b82f6';
     var colS = cls ? cls.color.stroke : '#1d4ed8';
 
-    // Load UAL1 mannequin as guerriero base (has skeleton + 43 animations)
-    if (classId === 'guerriero') {
-        // Fallback PRIMA del load — altrimenti con cache sincrona non viene trovato
-        var fbMat = _mat(col, { emissive: colS, emissiveI: 0.4 });
-        var fbBody = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.45, 8), fbMat);
-        fbBody.position.y = 0.25; fbBody.name = 'avatarFallback';
-        g.add(fbBody);
-
-        _loadAvatarGLB('ual1_standard', function(ualData) {
-            if (!ualData) { console.error('❌ ual1_standard.glb non caricato'); return; }
-
-            // Rimuovi sempre il fallback (cache hit = sincrono, primo load = asincrono)
-            var fallback = g.getObjectByName('avatarFallback');
-            if (fallback) { g.remove(fallback); }
-
-            // Clone with SkeletonUtils to preserve skin/bone binding
-            var SU = window.SkeletonUtils;
-            console.log('🦴 SkeletonUtils:', SU ? 'OK' : 'MANCANTE — fallback a .clone()');
-            var cloned = SU ? SU.clone(ualData.scene) : ualData.scene.clone();
-
-            // Scale to 0.07 world units
-            var h = ualData.naturalHeight > 0 ? ualData.naturalHeight : 1.0;
-            var s = 0.07 / h;
-            cloned.scale.set(s, s, s);
-            cloned.position.set(0, 0, 0);
-
-            // Calcola bbox reale sul clone scalato (geometria in T-pose = affidabile)
-            // updateMatrixWorld forza il calcolo anche prima di aggiungere alla scena
-            cloned.updateMatrixWorld(true);
-            var _fbox = new THREE.Box3().setFromObject(cloned);
-            if (isFinite(_fbox.min.y)) {
-                cloned.position.y = -_fbox.min.y;
-                console.log('📐 Feet offset:', cloned.position.y.toFixed(4),
-                    '| bbox Y:', _fbox.min.y.toFixed(3), '->', _fbox.max.y.toFixed(3));
-            } else {
-                // fallback: assume origine al centro del modello
-                cloned.position.y = (h * s) * 0.5;
-                console.warn('⚠️  Bbox invalida, uso fallback centro:', cloned.position.y.toFixed(4));
-            }
-
-            // NO castShadow su SkinnedMesh — troppo costoso (ricalcola shadow map per ogni bone)
-            cloned.traverse(function(node) {
-                node.visible = true;
-                if (node.isMesh) {
-                    node.castShadow = false;
-                    node.receiveShadow = false;
-                }
-            });
-
-            g.add(cloned);
-            g.visible = true;
-
-            // Melee arc indicator (attack zone visualization)
-            var meleeArcMesh = _createMeleeArcMesh(1.5, 90, '#60a5fa', 0.10);
-            meleeArcMesh.position.y = 0.005;
-            meleeArcMesh.name = 'meleeArc';
-            meleeArcMesh.visible = false; // shown only in FPS combat
-            g.add(meleeArcMesh);
-
-            // NON impostare g.position.y qui — spawnUnitModel3D gestisce il posizionamento.
-            // Impostarlo qui (cache sync) causa bbox errato → feetOffset = 0 → avatar a y=0.
-            console.log('⚔️  Guerriero UAL1 caricato. Scale:', s.toFixed(3));
-
-            // Update threeUnitModels entry
-            for (var uid in threeUnitModels) {
-                if (threeUnitModels[uid] && threeUnitModels[uid].group === g) {
-                    threeUnitModels[uid].feetOffset = TILE_Y * 2;
-                    threeUnitModels[uid].targetPos.y = TILE_Y * 2;
-                    break;
-                }
-            }
-
-            // Setup AnimationMixer with UAL1 clips
-            var clips = ualData.animations || [];
-            console.log('🎬 UAL1 clips disponibili:', clips.length);
-            _setupAvatarMixer(g, cloned, clips);
-
-            // Attach sword to right hand bone
-            _attachSwordToHand(g, cloned, s);
-
-            // Load UAL2 combo clips (Sword_Regular_A/B/Combo) — override UAL1 fallback
-            _loadUAL2ComboClips(g);
-        });
-    } else if (classId === 'stratega' || classId === 'stregone' || classId === 'mistico') {
+    // All outfit-based classes (UE4 skeleton + UAL1 animations)
+    if (classId === 'guerriero' || classId === 'stratega' || classId === 'stregone' || classId === 'mistico') {
         // Outfit GLB models from the Modular Fantasy pack
         _buildOutfitAvatar(g, classId, col);
     } else {

@@ -65,6 +65,10 @@ const TICK_DURATION_S = 1.0;
 const MAX_TICKS = 40;
 const ARMOR_K = 50;
 
+// --- Free movement ---
+const UNIT_SEPARATION_DIST = 0.45;   // minimum center-to-center between units
+const RANGE_BUFFER = 0.15;           // extra reach beyond strict grid range
+
 // --- Damage types ---
 const DMG_PHYSICAL = 'physical';
 const DMG_MAGIC = 'magic';

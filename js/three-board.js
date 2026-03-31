@@ -70,29 +70,53 @@ function createBoard3D() {
 
 // === BASE WORLD GROUND ===
 function _createBaseGround() {
-    // Large dark ground plane beneath the entire board — prevents seeing under tiles
-    // and fills the area around/beyond the octagon
-    var size = BOARD_ROWS * TILE_UNIT * 1.6; // extends well beyond the board
-    var groundGeo = new THREE.PlaneGeometry(size, size);
+    // Lush grass terrain beneath and around the board
+    var size = BOARD_ROWS * TILE_UNIT * 2.5; // extends far beyond the board
+    var segments = 64; // enough for gentle hills
+    var groundGeo = new THREE.PlaneGeometry(size, size, segments, segments);
+
+    // Gentle terrain undulation (subtle hills around the board)
+    var posAttr = groundGeo.attributes.position;
+    var boardHalf = BOARD_ROWS * TILE_UNIT * 0.5;
+    for (var vi = 0; vi < posAttr.count; vi++) {
+        var vx = posAttr.getX(vi);
+        var vy = posAttr.getY(vi);
+        // Distance from center (in plane space, before rotation)
+        var dist = Math.sqrt(vx * vx + vy * vy);
+        // Flat under the board, gentle hills outside
+        var hill = 0;
+        if (dist > boardHalf * 0.8) {
+            var t = (dist - boardHalf * 0.8) / (boardHalf * 0.8);
+            hill = Math.sin(vx * 0.15) * Math.cos(vy * 0.12) * t * 0.3;
+            hill += Math.sin(vx * 0.08 + 1.5) * Math.sin(vy * 0.1 + 0.7) * t * 0.2;
+        }
+        posAttr.setZ(vi, hill);
+    }
+    groundGeo.computeVertexNormals();
+
     var textureLoader = new THREE.TextureLoader();
     var groundMat = new THREE.MeshStandardMaterial({
-        color: '#4a7a3a',
-        roughness: 0.92,
-        metalness: 0.02,
+        color: '#5a9a3a',
+        roughness: 0.88,
+        metalness: 0.0,
         side: THREE.FrontSide
     });
-    // Load a subtle dirt texture for the world floor
-    textureLoader.load('models/kenney/Textures/floor_ground_dirt.png', function(tex) {
+
+    // Load grass texture
+    textureLoader.load('models/kenney/Textures/floor_ground_grass.png', function(tex) {
         tex.wrapS = THREE.RepeatWrapping;
         tex.wrapT = THREE.RepeatWrapping;
-        tex.repeat.set(16, 16);
+        tex.repeat.set(24, 24);
+        tex.colorSpace = THREE.SRGBColorSpace;
         groundMat.map = tex;
         groundMat.needsUpdate = true;
     });
+
     var ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
-    ground.position.set(BOARD_CX, 0.01, BOARD_CZ); // well below tile surface (0.15)
+    ground.position.set(BOARD_CX, -0.02, BOARD_CZ);
     ground.receiveShadow = true;
+    ground.name = 'terrainGrass';
     threeScene.add(ground);
     boardDecorations.push(ground);
 }

@@ -224,6 +224,7 @@ function respawnAvatar(player) {
         }
         avatar.row = cell.r;
         avatar.col = cell.c;
+        if (typeof initUnitWorldPos === 'function') initUnitWorldPos(avatar);
         avatar.px = 0;
         avatar.py = 0;
     }
@@ -607,7 +608,7 @@ function executeAvatarAbility(avatar, abilityId, allUnits, teams, grid) {
                     revived.deathAnim = 0;
                     // Place near avatar
                     var adj = findFreeCellAdjacentTo(avatar.row, avatar.col, grid);
-                    if (adj) { revived.row = adj.r; revived.col = adj.c; grid[adj.r][adj.c] = revived.id; }
+                    if (adj) { revived.row = adj.r; revived.col = adj.c; grid[adj.r][adj.c] = revived.id; if (typeof initUnitWorldPos === 'function') initUnitWorldPos(revived); }
                     var _rvX = revived._smoothWX !== undefined ? revived._smoothWX : (typeof cellToWorld === 'function' ? cellToWorld(revived.row, revived.col).x : revived.col);
                     var _rvZ = revived._smoothWZ !== undefined ? revived._smoothWZ : (typeof cellToWorld === 'function' ? cellToWorld(revived.row, revived.col).z : revived.row);
                     var _rvY = typeof UNIT_BASE_Y !== 'undefined' ? UNIT_BASE_Y : 0.15;
@@ -700,6 +701,7 @@ function saveAvatarAfterCombat(player, teams) {
                 player.avatar.hp = Math.max(1, Math.round(player.avatar.maxHp * hpRatio));
                 player.avatar.row = team[i].row;
                 player.avatar.col = team[i].col;
+                if (typeof initUnitWorldPos === 'function') initUnitWorldPos(player.avatar);
             } else {
                 player.avatar._needsRespawn = true;
                 // Extra damage to player when avatar dies

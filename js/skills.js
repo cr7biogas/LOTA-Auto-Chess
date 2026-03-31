@@ -364,6 +364,7 @@ function executeSkillEffect(skillId, caster, target, teams, grid, allUnits) {
             if (grid[caster.row]) grid[caster.row][caster.col] = null;
             caster.row = bestR; caster.col = bestC;
             if (grid[bestR]) grid[bestR][bestC] = caster.id;
+            initUnitWorldPos(caster);
             caster.dodgeChance += 0.25;
             caster._fugaDodgeTicks = 3;
             return true;
@@ -439,6 +440,7 @@ function executeSkillEffect(skillId, caster, target, teams, grid, allUnits) {
             if (grid[caster.row]) grid[caster.row][caster.col] = null;
             caster.row = freeCell.r; caster.col = freeCell.c;
             if (grid[freeCell.r]) grid[freeCell.r][freeCell.c] = caster.id;
+            initUnitWorldPos(caster);
             caster.shield = Math.floor(caster.maxHp * 0.15);
             return true;
 
@@ -485,6 +487,7 @@ function executeSkillEffect(skillId, caster, target, teams, grid, allUnits) {
                 if (grid[target.row]) grid[target.row][target.col] = null;
                 target.row = bestCorner.r; target.col = bestCorner.c;
                 if (grid[bestCorner.r]) grid[bestCorner.r][bestCorner.c] = target.id;
+                initUnitWorldPos(target);
             }
             var dmg = Math.round(target.maxHp * 0.15);
             applyPureDamage(target, dmg, caster);
@@ -604,6 +607,7 @@ function executeSkillEffect(skillId, caster, target, teams, grid, allUnits) {
                 if (grid[caster.row]) grid[caster.row][caster.col] = null;
                 caster.row = freeCell.r; caster.col = freeCell.c;
                 if (grid[freeCell.r]) grid[freeCell.r][freeCell.c] = caster.id;
+                initUnitWorldPos(caster);
             }
             var dmg = S(Math.round(caster.atk * 1.50));
             target.hp -= dmg;
@@ -631,6 +635,7 @@ function executeSkillEffect(skillId, caster, target, teams, grid, allUnits) {
                         grid[e.row][e.col] = null;
                         e.row = newR; e.col = newC;
                         grid[newR][newC] = e.id;
+                        initUnitWorldPos(e);
                     }
                     applyEffect(e, { type: 'speed_reduction', value: 0.25, ticksLeft: 2, sourceType: 'skill_vento' }, caster);
                 }
@@ -746,6 +751,7 @@ function executeSkillEffect(skillId, caster, target, teams, grid, allUnits) {
                             grid[newR][newC] = e.id;
                         } else break;
                     }
+                    initUnitWorldPos(e);
                     var dmg = Math.round(e.maxHp * 0.05);
                     e.hp -= dmg;
                     addDamageNumber(e, dmg, 'magic');

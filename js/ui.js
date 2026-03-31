@@ -17,14 +17,50 @@ function getHumanPlayer() {
 
 // --- Side Panel Tab System ---
 var _spActiveTab = 'gioco';
+var _spPanelOpen = false;
 
 function initSidePanelTabs() {
+    // Icon toolbar buttons
+    var icons = document.querySelectorAll('#icon-toolbar .toolbar-icon[data-panel]');
+    for (var i = 0; i < icons.length; i++) {
+        icons[i].addEventListener('click', function() {
+            var panelId = this.getAttribute('data-panel');
+            if (!panelId) return;
+            _toggleSidePanel(panelId);
+        });
+    }
+    // Also support old tab buttons (backward compat)
     var tabs = document.querySelectorAll('#sp-tabs .sp-tab');
     for (var i = 0; i < tabs.length; i++) {
         tabs[i].addEventListener('click', function() {
             var tabId = this.getAttribute('data-tab');
             _switchSPTab(tabId);
         });
+    }
+}
+
+function _toggleSidePanel(panelId) {
+    var sidePanel = document.getElementById('side-panel');
+    if (!sidePanel) return;
+
+    if (_spPanelOpen && _spActiveTab === panelId) {
+        // Same icon clicked again — close panel
+        sidePanel.classList.remove('active');
+        _spPanelOpen = false;
+        _updateToolbarIcons(null);
+    } else {
+        // Open panel with this tab
+        _switchSPTab(panelId);
+        sidePanel.classList.add('active');
+        _spPanelOpen = true;
+        _updateToolbarIcons(panelId);
+    }
+}
+
+function _updateToolbarIcons(activePanel) {
+    var icons = document.querySelectorAll('#icon-toolbar .toolbar-icon[data-panel]');
+    for (var i = 0; i < icons.length; i++) {
+        icons[i].classList.toggle('active', icons[i].getAttribute('data-panel') === activePanel);
     }
 }
 
@@ -38,11 +74,18 @@ function _switchSPTab(tabId) {
     for (var i = 0; i < contents.length; i++) {
         contents[i].classList.toggle('active', contents[i].id === 'sp-tab-' + tabId);
     }
+    _updateToolbarIcons(tabId);
 }
 
 // Auto-switch to relevant tab on certain actions
 function _autoSwitchTab(tabId) {
     if (_spActiveTab !== tabId) _switchSPTab(tabId);
+    // Also open the panel if it's closed
+    var sidePanel = document.getElementById('side-panel');
+    if (sidePanel && !_spPanelOpen) {
+        sidePanel.classList.add('active');
+        _spPanelOpen = true;
+    }
 }
 
 // --- Overlay management ---
@@ -1121,11 +1164,21 @@ function updateSidePanel(playersArr, activeSynergies) {
             itemInventory.appendChild(empty);
         }
 
-        // --- Tab badge: show count on Zaino tab ---
-        var zainoTab = document.querySelector('.sp-tab[data-tab="zaino"]');
-        if (zainoTab && human) {
+        // --- Badge on toolbar icon for Zaino ---
+        var zainoIcon = document.querySelector('.toolbar-icon[data-panel="zaino"]');
+        if (zainoIcon && human) {
             var invCount = human.inventory.length + human.consumables.length;
-            zainoTab.textContent = 'Zaino' + (invCount > 0 ? ' (' + invCount + ')' : '');
+            var badge = zainoIcon.querySelector('.toolbar-badge');
+            if (invCount > 0) {
+                if (!badge) {
+                    badge = document.createElement('span');
+                    badge.className = 'toolbar-badge';
+                    zainoIcon.appendChild(badge);
+                }
+                badge.textContent = invCount;
+            } else if (badge) {
+                badge.remove();
+            }
         }
 
         // Event delegation for item actions
@@ -2349,18 +2402,56 @@ function setupBoardInteraction() {
                 return;
             }
 
-            // LOCKED: bench↔field swap blocked — field units cannot be moved manually
+            // Bench → Field unit swap (only if field unit is in deploy zone)
             if (selectedBenchUnit !== null) {
-                if (typeof showToast === 'function') showToast('Unità in campo bloccata! Non può essere spostata.', 'warning', '🔒');
+                var pSlot = typeof getPlayerSlot === 'function' ? getPlayerSlot(human) : 0;
+                if (!clickedUnit.isMilitia && !clickedUnit.isStructure && isDeployZone(clickedUnit.row, clickedUnit.col, pSlot)) {
+                    var benchIdx = -1;
+                    for (var bi = 0; bi < human.benchUnits.length; bi++) {
+                        if (human.benchUnits[bi] && human.benchUnits[bi].id === selectedBenchUnit) { benchIdx = bi; break; }
+                    }
+                    if (benchIdx >= 0) {
+                        var benchUnit = human.benchUnits[benchIdx];
+                        var savedRow = clickedUnit.row, savedCol = clickedUnit.col;
+                        var fieldIdx = -1;
+                        for (var fi = 0; fi < human.fieldUnits.length; fi++) {
+                            if (human.fieldUnits[fi].id === clickedUnit.id) { fieldIdx = fi; break; }
+                        }
+                        if (fieldIdx >= 0) {
+                            human.fieldUnits.splice(fieldIdx, 1);
+                            human.benchUnits[benchIdx] = clickedUnit;
+                            clickedUnit.row = -1; clickedUnit.col = -1;
+                            benchUnit.row = savedRow; benchUnit.col = savedCol;
+                            benchUnit.px = 0; benchUnit.py = 0;
+                            human.fieldUnits.push(benchUnit);
+                            if (typeof removeUnitModel3D === 'function') {
+                                removeUnitModel3D(clickedUnit.id);
+                                removeUnitModel3D(benchUnit.id);
+                            }
+                            if (typeof spawnUnitModel3D === 'function' && typeof threeScene !== 'undefined' && threeScene) {
+                                spawnUnitModel3D(benchUnit);
+                            }
+                            updateBench(human);
+                            updateHUD(human);
+                            if (typeof updateUnitRoster === 'function') updateUnitRoster(human);
+                            if (typeof showToast === 'function') showToast(benchUnit.charId + ' ↔ ' + clickedUnit.charId + ' scambiati!', 'success', '✓');
+                        }
+                    }
+                } else {
+                    if (typeof showToast === 'function') showToast('Puoi sostituire solo nella tua area di base!', 'warning', '⚠');
+                }
                 clearBenchSelection();
                 clearFieldSelection();
                 return;
             }
 
-            // LOCKED: field↔field swap blocked — field units cannot be riposizionate
+            // Field↔Field swap: blocked — units stay where they are
             if (selectedFieldUnit !== null && selectedFieldUnit !== clickedUnit.id) {
-                if (typeof showToast === 'function') showToast('Unità in campo bloccata! Solo abilità possono spostarla.', 'warning', '🔒');
                 clearFieldSelection();
+                // Just select the new unit instead
+                selectedFieldUnit = clickedUnit.id;
+                if (typeof showUnitInfoCard === 'function') showUnitInfoCard(clickedUnit);
+                _refreshSelectedUnitPanel();
                 return;
             }
 
@@ -2379,36 +2470,26 @@ function setupBoardInteraction() {
             return;
         }
 
-        // Clicked on empty valid cell — move selected unit there (anywhere on board)
+        // Clicked on empty valid cell
         if (isValidCell(row, col)) {
-            // Check cell is not occupied by another unit (hero or militia)
             var cellOccupied = !!findPlayerUnitAtCell(human, row, col);
+            var pSlot = typeof getPlayerSlot === 'function' ? getPlayerSlot(human) : 0;
 
             if (!cellOccupied) {
-                // Reposition field unit to empty cell
+                // Field unit selected + empty cell click: NO free repositioning
                 if (selectedFieldUnit !== null) {
-                    var fieldUnit = findPlayerUnit(human, selectedFieldUnit);
-                    if (fieldUnit) {
-                        // Remove 3D model at old position
-                        if (typeof removeUnitModel3D === 'function') removeUnitModel3D(fieldUnit.id);
-                        fieldUnit.row = row;
-                        fieldUnit.col = col;
-                        fieldUnit.px = 0;
-                        fieldUnit.py = 0;
-                        // Spawn 3D model at new position
-                        if (typeof spawnUnitModel3D === 'function' && typeof threeScene !== 'undefined' && threeScene) {
-                            spawnUnitModel3D(fieldUnit);
-                        }
-                        if (typeof showToast === 'function') showToast(fieldUnit.charId + ' spostato!', 'success', '✓');
-                        if (typeof updateUnitRoster === 'function') updateUnitRoster(human);
-                    }
                     clearFieldSelection();
                     if (typeof hideUnitInfoCard === 'function') hideUnitInfoCard();
                     return;
                 }
 
-                // Place bench unit on any valid cell (first deployment — allowed)
+                // Place bench unit on empty cell (only in own deploy zone)
                 if (selectedBenchUnit !== null) {
+                    if (!isDeployZone(row, col, pSlot)) {
+                        if (typeof showToast === 'function') showToast('Puoi schierare solo nella tua area di base!', 'warning', '⚠');
+                        clearBenchSelection();
+                        return;
+                    }
                     if (human.fieldUnits.length >= human.unlockedFieldSlots) {
                         if (typeof showToast === 'function') showToast('Slot campo pieni! Sblocca un nuovo slot.', 'warning', '⚠');
                         clearBenchSelection();
@@ -2429,7 +2510,6 @@ function setupBoardInteraction() {
                         unit.px = 0;
                         unit.py = 0;
                         human.fieldUnits.push(unit);
-                        // Spawn immediato del modello 3D (evita creazione lazy nel render loop)
                         if (typeof spawnUnitModel3D === 'function' && typeof threeScene !== 'undefined' && threeScene) {
                             if (typeof threeUnitModels === 'undefined' || !threeUnitModels[unit.id]) {
                                 spawnUnitModel3D(unit);
@@ -2437,7 +2517,7 @@ function setupBoardInteraction() {
                         }
                         updateBench(human);
                         updateHUD(human);
-                        if (typeof showToast === 'function') showToast(unit.charId + ' piazzato in campo!', 'success', '✓');
+                        if (typeof showToast === 'function') showToast(unit.charId + ' schierato!', 'success', '✓');
                     }
                     clearBenchSelection();
                     return;
@@ -2481,10 +2561,11 @@ function setupBoardInteraction() {
 
                 var unit = human.benchUnits[slotIdx];
 
-                // Field → empty bench slot: recall unit from field to bench
+                // Field → empty bench slot: recall unit from field to bench (only from deploy zone)
                 if (selectedFieldUnit !== null && !unit) {
                     var fieldUnit = findPlayerUnit(human, selectedFieldUnit);
-                    if (fieldUnit && !fieldUnit.isMilitia && !fieldUnit.isStructure) {
+                    var pSlot = typeof getPlayerSlot === 'function' ? getPlayerSlot(human) : 0;
+                    if (fieldUnit && !fieldUnit.isMilitia && !fieldUnit.isStructure && isDeployZone(fieldUnit.row, fieldUnit.col, pSlot)) {
                         // Find and remove from fieldUnits
                         for (var fi = 0; fi < human.fieldUnits.length; fi++) {
                             if (human.fieldUnits[fi].id === selectedFieldUnit) {
@@ -2504,16 +2585,19 @@ function setupBoardInteraction() {
                         updateHUD(human);
                         if (typeof updateUnitRoster === 'function') updateUnitRoster(human);
                         if (typeof showToast === 'function') showToast(fieldUnit.charId + ' ritirato in panchina!', 'info', '↩');
+                    } else if (fieldUnit && !isDeployZone(fieldUnit.row, fieldUnit.col, pSlot)) {
+                        if (typeof showToast === 'function') showToast('Solo dalla tua area di base!', 'warning', '⚠');
                     }
                     clearFieldSelection();
                     clearBenchSelection();
                     return;
                 }
 
-                // Field ↔ bench swap: swap a field unit with a bench unit
+                // Field ↔ bench swap: swap a field unit with a bench unit (only from deploy zone)
                 if (selectedFieldUnit !== null && unit) {
                     var fieldUnit = findPlayerUnit(human, selectedFieldUnit);
-                    if (fieldUnit && !fieldUnit.isMilitia && !fieldUnit.isStructure) {
+                    var pSlot2 = typeof getPlayerSlot === 'function' ? getPlayerSlot(human) : 0;
+                    if (fieldUnit && !fieldUnit.isMilitia && !fieldUnit.isStructure && isDeployZone(fieldUnit.row, fieldUnit.col, pSlot2)) {
                         var savedRow = fieldUnit.row, savedCol = fieldUnit.col;
                         // Remove field unit from field array
                         for (var fi = 0; fi < human.fieldUnits.length; fi++) {
@@ -2543,6 +2627,8 @@ function setupBoardInteraction() {
                         updateHUD(human);
                         if (typeof updateUnitRoster === 'function') updateUnitRoster(human);
                         if (typeof showToast === 'function') showToast(fieldUnit.charId + ' ↔ ' + unit.charId + ' scambiati!', 'success', '🔄');
+                    } else if (fieldUnit && !isDeployZone(fieldUnit.row, fieldUnit.col, pSlot2)) {
+                        if (typeof showToast === 'function') showToast('Solo dalla tua area di base!', 'warning', '⚠');
                     }
                     clearFieldSelection();
                     clearBenchSelection();

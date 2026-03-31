@@ -66,15 +66,20 @@ function _initBodyState(entry) {
 function _animateBodyPhysics(g, unit, entry, dt, phase) {
     _initBodyState(entry);
 
-    // ---- movement detection ----
-    var distToTarget = g.position.distanceTo(entry.targetPos);
+    // ---- movement detection (velocity-based) ----
+    var curWx = (unit.wx !== undefined) ? unit.wx : g.position.x;
+    var curWz = (unit.wz !== undefined) ? unit.wz : g.position.z;
+    var moved = Math.abs(curWx - (entry._prevWx || curWx)) + Math.abs(curWz - (entry._prevWz || curWz));
+    entry._prevWx = curWx;
+    entry._prevWz = curWz;
     var wasMoving = entry._isMoving;
-    entry._isMoving = distToTarget > 0.08;
+    entry._isMoving = moved > 0.005; // actual movement happened
     var speedTarget = entry._isMoving ? 1.0 : 0.0;
-    entry._moveSpeed += (speedTarget - entry._moveSpeed) * Math.min(1, dt * 8);
+    // Fast transition to idle so walk anim stops crisply
+    entry._moveSpeed += (speedTarget - entry._moveSpeed) * Math.min(1, dt * 12);
 
     // advance walk phase proportional to movement speed
-    var walkFreq = 4.5; // steps per second at full speed
+    var walkFreq = 2.8; // steps per second — deliberate, grounded stride
     if (entry._isMoving) {
         entry._walkPhase += dt * walkFreq * entry._moveSpeed;
     }
@@ -431,14 +436,14 @@ _animateAttack = function(g, unit, dt) {
     var easeOut = function(x) { return 1 - (1-x)*(1-x); };
     var easeInOut = function(x) { return x < 0.5 ? 2*x*x : 1-2*(1-x)*(1-x); };
 
-    // ── Body lunge ──
-    // Anticipation: pull back slightly; Strike: surge forward; Follow: settle
-    var lungePull   = -0.08 * easeOut(phaseA) * (phaseB < 1.0 ? 1.0 : 0); // lean back
-    var lungeStrike = 0.32 * easeIn(phaseC);                                // surge
+    // ── Body lunge — short and grounded ──
+    // Reduced lunge: units stay planted, only lean forward slightly on strike
+    var lungePull   = -0.04 * easeOut(phaseA) * (phaseB < 1.0 ? 1.0 : 0); // small lean back
+    var lungeStrike = 0.10 * easeIn(phaseC);                                // short surge
     var lungeSettle = lungeStrike * (1.0 - easeOut(phaseD));               // settle
 
     var lungeNet = lungePull + (phaseB >= 1.0 ? lungeSettle : 0) +
-                   (phaseC > 0 ? 0.32 * easeIn(phaseC) * (1 - phaseD) : 0);
+                   (phaseC > 0 ? 0.10 * easeIn(phaseC) * (1 - phaseD) : 0);
     g.position.add(fwd.clone().multiplyScalar(lungeNet));
 
     // ── Squash & Stretch ──
@@ -449,17 +454,17 @@ _animateAttack = function(g, unit, dt) {
     var sqY = 1.0;
     var sqX = 1.0;
     if (p < 0.2) {
-        // coil — slight squash down
-        sqY = 1.0 - easeIn(phaseA) * 0.08;
-        sqX = 1.0 + easeIn(phaseA) * 0.05;
+        // coil — subtle squash
+        sqY = 1.0 - easeIn(phaseA) * 0.03;
+        sqX = 1.0 + easeIn(phaseA) * 0.02;
     } else if (p < 0.65) {
-        // wind-up + strike — stretch upward then snap
+        // wind-up + strike — mild stretch
         var stretchP = easeIn(phaseB) * (1 - phaseC) + easeIn(phaseC) * 0.3;
-        sqY = 1.0 + stretchP * 0.18;
-        sqX = 1.0 - stretchP * 0.06;
+        sqY = 1.0 + stretchP * 0.06;
+        sqX = 1.0 - stretchP * 0.02;
     } else {
-        // follow-through — relax back
-        sqY = 1.0 + (1 - easeOut(phaseD)) * 0.05;
+        // follow-through — barely noticeable relax
+        sqY = 1.0 + (1 - easeOut(phaseD)) * 0.02;
         sqX = 1.0;
     }
     g.scale.set(sqBase * sqX, sqBase * sqY, sqBase * sqX);

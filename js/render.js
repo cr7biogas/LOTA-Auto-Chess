@@ -317,8 +317,13 @@ function drawUnit(unit) {
     if (!unit.alive && unit.deathAnim <= 0) return;
 
     var pos = cellToPixel(unit.row, unit.col);
-    unit.px += (pos.x - unit.px) * 0.25;
-    unit.py += (pos.y - unit.py) * 0.25;
+    var _dx2d = pos.x - unit.px, _dy2d = pos.y - unit.py;
+    if (Math.abs(_dx2d) < 1 && Math.abs(_dy2d) < 1) {
+        unit.px = pos.x; unit.py = pos.y; // snap when close
+    } else {
+        unit.px += _dx2d * 0.35; // faster arrival
+        unit.py += _dy2d * 0.35;
+    }
 
     var cx = unit.px;
     var cy = unit.py;
@@ -328,7 +333,7 @@ function drawUnit(unit) {
     if (!unit.alive) ctx.globalAlpha = unit.deathAnim;
 
     if (unit.atkAnim > 0) {
-        var lunge = unit.atkAnim * 4;
+        var lunge = unit.atkAnim * 2; // reduced from 4 to 2
         cy += unit.facing * -lunge;
     }
 
@@ -781,6 +786,9 @@ function renderFrame3D(dt) {
         // Camera first: updates _camOrbitAngle from Q/E so animations read the fresh angle
         if (typeof updateFPVCamera === 'function') updateFPVCamera(dt);
 
+        // Per-frame free movement: smoothly walk units toward combat targets
+        if (typeof updateFreeMovementFrame === 'function') updateFreeMovementFrame(dt, combatUnits);
+
         updateAnimations3D(dt, combatUnits);
         if (typeof animateBoardDecorations === 'function') animateBoardDecorations(dt, t);
 
@@ -813,9 +821,14 @@ function renderFrame3D(dt) {
     if (typeof updateArcaneOrbs === 'function') updateArcaneOrbs(dt);
     if (typeof updateSummonedZombies === 'function') updateSummonedZombies(dt);
 
-    // --- Render Three.js scene ---
+    // --- Render Three.js scene (with post-processing if available) ---
     var activeCam = (typeof getActiveCamera === 'function') ? getActiveCamera() : threeCamera;
-    threeRenderer.render(threeScene, activeCam);
+    if (typeof _composer !== 'undefined' && _composer) {
+        if (typeof _updateComposerCamera === 'function') _updateComposerCamera(activeCam);
+        _composer.render();
+    } else {
+        threeRenderer.render(threeScene, activeCam);
+    }
 
     // --- PERF monitor (top-left corner) ---
     if (threeRenderer.info) {

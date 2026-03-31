@@ -761,22 +761,26 @@ function updateAnimations3D(dt, units) {
             }
         }
 
-        // ---- position lerp ----
+        // ---- position lerp (free movement) ----
         var _unitY = entry.feetOffset !== undefined ? entry.feetOffset : UNIT_BASE_Y;
         if (unit.isAvatar && unit._smoothWX !== undefined && unit._smoothWZ !== undefined) {
             _tmpVec3.set(unit._smoothWX, _unitY, unit._smoothWZ);
+        } else if (unit._freeMove) {
+            // Use continuous world position for free movement
+            _tmpVec3.set(unit.wx, _unitY, unit.wz);
         } else {
             var _cw = cellToWorld(unit.row, unit.col);
             _tmpVec3.set(_cw.x, _unitY, _cw.z);
         }
         entry.targetPos.copy(_tmpVec3);
-        // Snap-step movement: fast lerp so units arrive quickly and idle cleanly
+        // Smooth follow: tight lerp since wx/wz update every frame
         var _moveDist = g.position.distanceTo(entry.targetPos);
-        if (_moveDist < 0.03) {
-            // Close enough — snap to grid, no micro-sliding
+        if (_moveDist < 0.01) {
             g.position.copy(entry.targetPos);
         } else {
-            g.position.lerp(entry.targetPos, unit.isAvatar ? 0.25 : 0.22);
+            // Tight follow for smooth continuous movement
+            var _lerpFactor = unit.isAvatar ? 0.3 : (unit._freeMove ? 0.35 : 0.18);
+            g.position.lerp(entry.targetPos, _lerpFactor);
         }
 
         // ---- rotation ----

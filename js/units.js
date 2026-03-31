@@ -35,9 +35,20 @@ function createUnit(charId, star, owner, row, col) {
         dmgMultiplier: 1.0,
         magicResist: 0,
 
-        // Position
+        // Position (grid + world)
         row: row,
         col: col,
+        wx: 0, wz: 0, // world-space position, set at combat init
+        moveSpeed: (function() {
+            switch(charId) {
+                case 'Babidi': return 0.9;
+                case 'Caronte': return 1.0;
+                case 'Valerio': return 1.0;
+                case 'Yujin': return 1.3;
+                case 'WMS': return 1.1;
+                default: return 1.0;
+            }
+        })(),
         px: 0, py: 0,
         targetRow: -1, targetCol: -1,
 
@@ -129,6 +140,7 @@ function createCreepUnit(creepDef, row, col) {
         dmgMultiplier: 1.0,
         magicResist: 0,
         row: row, col: col,
+        wx: 0, wz: 0, moveSpeed: 0.9,
         px: 0, py: 0,
         targetRow: -1, targetCol: -1,
         alive: true,
@@ -198,7 +210,7 @@ function findNearestEnemy(unit, enemies) {
     let minDist = Infinity;
     for (const e of enemies) {
         if (!e.alive) continue;
-        const d = chebyshevDist(unit.row, unit.col, e.row, e.col);
+        const d = unitWorldDist(unit, e);
         if (d < minDist) { minDist = d; nearest = e; }
     }
     return nearest;
@@ -279,7 +291,7 @@ function selectTarget(unit, enemies, allies) {
             var bestDist = Infinity;
             for (var i = 0; i < enemies.length; i++) {
                 if (!enemies[i].alive) continue;
-                var d = chebyshevDist(protectee.row, protectee.col, enemies[i].row, enemies[i].col);
+                var d = unitWorldDist(protectee, enemies[i]);
                 if (d < bestDist) { bestDist = d; bestTarget = enemies[i]; }
             }
             if (bestTarget) return bestTarget;
@@ -307,7 +319,7 @@ function selectTarget(unit, enemies, allies) {
             var bestDist = Infinity;
             for (var i = 0; i < enemies.length; i++) {
                 if (!enemies[i].alive) continue;
-                var d = chebyshevDist(followed.row, followed.col, enemies[i].row, enemies[i].col);
+                var d = unitWorldDist(followed, enemies[i]);
                 if (d < bestDist) { bestDist = d; bestTarget = enemies[i]; }
             }
             if (bestTarget) return bestTarget;
@@ -323,7 +335,7 @@ function selectTarget(unit, enemies, allies) {
         for (var i = 0; i < enemies.length; i++) {
             if (!enemies[i].alive) continue;
             if (enemies[i].charId === 'Valerio' && enemies[i].unitClass === 'Guardiano') {
-                var d = chebyshevDist(unit.row, unit.col, enemies[i].row, enemies[i].col);
+                var d = unitWorldDist(unit, enemies[i]);
                 if (d < nearestDist) {
                     nearestDist = d;
                     nearestValerio = enemies[i];
@@ -524,6 +536,145 @@ function calculateMoveTarget(unit, target, grid, allies) {
     }
 }
 
+// --- Free movement: calculate world-space move target ---
+// Returns { wx, wz, stopDist } or null (stay put)
+function calculateFreeMoveTarget(unit, target, allies, allUnits) {
+    var TU = (typeof TILE_UNIT !== 'undefined') ? TILE_UNIT : 1.0;
+    var order = unit.tacticalOrder || ORDER_FREE;
+    var attackDist = unit.range * TU + RANGE_BUFFER;
+
+    if (order === ORDER_HOLD) return null;
+
+    // ORDER_MOVE: march toward destination cell in world space
+    if (order === ORDER_MOVE) {
+        var mr = unit.tacticalMoveRow;
+        var mc = unit.tacticalMoveCol;
+        if (mr >= 0 && mc >= 0) {
+            var destWx = mc * TU + TU * 0.5;
+            var destWz = mr * TU + TU * 0.5;
+            var d = worldDist(unit.wx, unit.wz, destWx, destWz);
+            if (d <= 0.3) return null;
+            return { wx: destWx, wz: destWz, stopDist: 0.2 };
+        }
+        if (!target) return null;
+    }
+
+    if (!target) return null;
+
+    if (order === ORDER_COVER) {
+        var d = unitWorldDist(unit, target);
+        if (d <= attackDist) {
+            // Flee away from target
+            var dx = unit.wx - target.wx;
+            var dz = unit.wz - target.wz;
+            var len = Math.sqrt(dx * dx + dz * dz) || 1;
+            return { wx: unit.wx + (dx / len) * 3, wz: unit.wz + (dz / len) * 3, stopDist: 0 };
+        }
+        if (d > attackDist + 2 * TU) {
+            return { wx: target.wx, wz: target.wz, stopDist: attackDist };
+        }
+        return null;
+    }
+
+    if (order === ORDER_PROTECT && allies && unit.tacticalTarget) {
+        var protectee = null;
+        for (var i = 0; i < allies.length; i++) {
+            if (allies[i].id === unit.tacticalTarget && allies[i].alive) { protectee = allies[i]; break; }
+        }
+        if (protectee) {
+            var distP = unitWorldDist(unit, protectee);
+            if (distP > 2.5 * TU) return { wx: protectee.wx, wz: protectee.wz, stopDist: 1.0 * TU };
+            var distT = unitWorldDist(unit, target);
+            if (distT <= attackDist) return null;
+            return { wx: target.wx, wz: target.wz, stopDist: attackDist };
+        }
+    }
+
+    if (order === ORDER_FOLLOW && allies && unit.tacticalTarget) {
+        var followed = null;
+        for (var i = 0; i < allies.length; i++) {
+            if (allies[i].id === unit.tacticalTarget && allies[i].alive) { followed = allies[i]; break; }
+        }
+        if (followed) {
+            var distF = unitWorldDist(unit, followed);
+            if (distF > 2.5 * TU) return { wx: followed.wx, wz: followed.wz, stopDist: 1.0 * TU };
+            var distT = unitWorldDist(unit, target);
+            if (distT <= attackDist) return null;
+            return { wx: target.wx, wz: target.wz, stopDist: attackDist };
+        }
+    }
+
+    if (order === ORDER_ATTACK) {
+        var d = unitWorldDist(unit, target);
+        if (d <= attackDist) return null;
+        return { wx: target.wx, wz: target.wz, stopDist: attackDist * 0.5 };
+    }
+
+    // --- Default behavior ---
+    switch (unit.behavior) {
+        case 'stationary': return null;
+
+        case 'aggressive': {
+            if (unit.isDungeonBoss && !target) {
+                var spawnWx = (unit.spawnCol || 0) * TU + TU * 0.5;
+                var spawnWz = (unit.spawnRow || 0) * TU + TU * 0.5;
+                if (worldDist(unit.wx, unit.wz, spawnWx, spawnWz) <= 0.3) return null;
+                return { wx: spawnWx, wz: spawnWz, stopDist: 0.2 };
+            }
+            if (!target) return null;
+            var d = unitWorldDist(unit, target);
+            if (d <= attackDist) return null;
+            // Dungeon boss zone check
+            if (unit.isDungeonBoss && unit.dungeonId && typeof isValidDungeonCellForCorner === 'function') {
+                var dx = target.wx - unit.wx, dz = target.wz - unit.wz;
+                var dist = Math.sqrt(dx * dx + dz * dz);
+                if (dist > 0) {
+                    var step = Math.min(unit.moveSpeed * TICK_DURATION_S * TU, dist);
+                    var nC = Math.floor((unit.wx + (dx / dist) * step) / TU);
+                    var nR = Math.floor((unit.wz + (dz / dist) * step) / TU);
+                    if (!isValidDungeonCellForCorner(nR, nC, unit.dungeonId)) return null;
+                }
+            }
+            return { wx: target.wx, wz: target.wz, stopDist: attackDist };
+        }
+
+        case 'kite': {
+            var d = unitWorldDist(unit, target);
+            if (d <= attackDist) {
+                unit.isStopped = true;
+                return null;
+            }
+            // Re-engage if target moved out of range
+            if (unit.isStopped && d > attackDist + 0.5) {
+                unit.isStopped = false;
+            }
+            if (unit.isStopped) return null;
+            return { wx: target.wx, wz: target.wz, stopDist: attackDist };
+        }
+
+        case 'teleport': return null;
+
+        case 'tank':
+        case 'carry':
+        case 'copy': {
+            var d = unitWorldDist(unit, target);
+            if (d <= attackDist) return null;
+            return { wx: target.wx, wz: target.wz, stopDist: attackDist };
+        }
+
+        case 'dps': {
+            var d = unitWorldDist(unit, target);
+            if (d <= attackDist) return null;
+            if (unit.furiaActive) {
+                return { wx: target.wx, wz: target.wz, stopDist: attackDist * 0.3 };
+            }
+            return { wx: target.wx, wz: target.wz, stopDist: attackDist };
+        }
+
+        default: return null;
+    }
+}
+
 // --- Apply WMS Risonanza Mistica ---
 function applyRisonanzaMistica(wms, allies) {
     let bestAlly = null;
@@ -590,6 +741,8 @@ function performCaronteTeleport(caronte, enemies, grid) {
         caronte.row = freeCell.r;
         caronte.col = freeCell.c;
         grid[freeCell.r][freeCell.c] = caronte.id;
+        // Sync world position for free movement
+        initUnitWorldPos(caronte);
     }
     caronte.hasTeleported = true;
     caronte.shield = Math.floor(caronte.maxHp * 0.15);

@@ -492,8 +492,8 @@ function _lobStartGame(msg) {
     if (existingBanner) existingBanner.remove();
     var banner = document.createElement('div');
     banner.id = 'mp-debug-banner';
-    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#1a1a2e;color:#00ff88;font:bold 12px monospace;padding:4px 8px;z-index:99999;text-align:center;';
-    banner.textContent = '\u{1F310} STANZA ' + (lobbyRoomCode || '?') + ' | Sei: ' + (myAssignment ? myAssignment.name + ' (slot ' + myAssignment.slotId + ')' : '???') + ' | ' + names;
+    banner.style.cssText = 'position:fixed;top:48px;left:50%;transform:translateX(-50%);background:rgba(15,17,30,0.9);color:#34d399;font:bold 11px monospace;padding:3px 14px;z-index:49;text-align:center;border-radius:0 0 8px 8px;border:1px solid rgba(52,211,153,0.25);border-top:none;white-space:nowrap;pointer-events:none;';
+    banner.textContent = '\u{1F310} ' + (lobbyRoomCode || '?') + ' | ' + (myAssignment ? myAssignment.name : '???') + ' | ' + names;
     document.body.appendChild(banner);
 
     console.log('[Lobby] Game starting | room:', lobbyRoomCode, '| myId:', window.lobbyPlayerId, '| seed:', msg.sharedSeed);

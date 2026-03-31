@@ -134,6 +134,41 @@ function findFreeCellAdjacentTo(r, c, grid) {
     return null;
 }
 
+// --- Free-movement helpers ---
+function unitWorldDist(u1, u2) {
+    var dx = (u1.wx || 0) - (u2.wx || 0);
+    var dz = (u1.wz || 0) - (u2.wz || 0);
+    return Math.sqrt(dx * dx + dz * dz);
+}
+
+function worldDist(x1, z1, x2, z2) {
+    var dx = x1 - x2;
+    var dz = z1 - z2;
+    return Math.sqrt(dx * dx + dz * dz);
+}
+
+function initUnitWorldPos(unit) {
+    var TU = (typeof TILE_UNIT !== 'undefined') ? TILE_UNIT : 1.0;
+    unit.wx = unit.col * TU + TU * 0.5;
+    unit.wz = unit.row * TU + TU * 0.5;
+    unit._freeMove = true; // flag: wx/wz are initialized for free movement
+}
+
+function syncUnitGridFromWorld(unit, grid) {
+    var TU = (typeof TILE_UNIT !== 'undefined') ? TILE_UNIT : 1.0;
+    var oldR = unit.row, oldC = unit.col;
+    var newR = Math.floor(unit.wz / TU);
+    var newC = Math.floor(unit.wx / TU);
+    if (newR !== oldR || newC !== oldC) {
+        if (isValidCell(newR, newC)) {
+            if (grid && grid[oldR] && grid[oldR][oldC] === unit.id) grid[oldR][oldC] = null;
+            unit.row = newR;
+            unit.col = newC;
+            if (grid && grid[newR]) grid[newR][newC] = unit.id;
+        }
+    }
+}
+
 // --- Deploy Zones (built dynamically from octagon shape) ---
 // DEPLOY_ZONES stores cell arrays computed at load time.
 // We cannot call isInsideOctagon at const-definition time since BOARD_ROWS

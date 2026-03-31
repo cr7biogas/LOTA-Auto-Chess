@@ -153,6 +153,9 @@ function toggleCombatLog() {
         if (combatLogVisible) panel.classList.add('active');
         else panel.classList.remove('active');
     }
+    // Sync toolbar icon
+    var toolbarBtn = document.getElementById('btn-toggle-log');
+    if (toolbarBtn) toolbarBtn.classList.toggle('active', combatLogVisible);
 }
 
 // =============================================
@@ -283,27 +286,40 @@ function initCommandUI() {
     if (_commandUIInitialized) return;
     _commandUIInitialized = true;
 
-    // Show combat log during combat
-    var logPanel = document.getElementById('combat-log');
-    if (logPanel) logPanel.classList.add('active');
-
-    // Toggle button
+    // Toggle button (header)
     var toggleBtn = document.getElementById('combat-log-toggle');
     if (toggleBtn) {
         toggleBtn.addEventListener('click', function() {
             toggleCombatLog();
         });
     }
+    // Toolbar log icon
+    var toolbarLogBtn = document.getElementById('btn-toggle-log');
+    if (toolbarLogBtn) {
+        toolbarLogBtn.addEventListener('click', function() {
+            toggleCombatLog();
+            // toggleCombatLog already syncs the icon class
+        });
+    }
 }
 
 // Called from renderFrame each frame
 function updateCommandUI(dt) {
-    // Update combat log
+    var logPanel = document.getElementById('combat-log');
     if (gamePhase === PHASE_COMBAT || gamePhase === PHASE_RESULT) {
         updateCombatLog();
-        var logPanel = document.getElementById('combat-log');
-        if (logPanel && !logPanel.classList.contains('active') && combatLogVisible) {
-            logPanel.classList.add('active');
+        // Respect user toggle — only sync panel visibility with combatLogVisible
+        if (logPanel) {
+            if (combatLogVisible && !logPanel.classList.contains('active')) {
+                logPanel.classList.add('active');
+            } else if (!combatLogVisible && logPanel.classList.contains('active')) {
+                logPanel.classList.remove('active');
+            }
+        }
+    } else {
+        // Outside combat: hide panel but preserve user preference
+        if (logPanel && logPanel.classList.contains('active')) {
+            logPanel.classList.remove('active');
         }
     }
 }
