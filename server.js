@@ -553,6 +553,16 @@ wss.on('connection', function(ws) {
             // ACK received
         }
 
+        // Combat snapshot — host broadcasts authoritative combat state to all others
+        if (msg.type === 'combat_snapshot' && room.gameStarted && playerEntry.isHost) {
+            var snapData = JSON.stringify(msg);
+            room.players.forEach(function(p) {
+                if (p.id !== playerId && p.ws.readyState === 1) {
+                    try { p.ws.send(snapData); } catch(e) {}
+                }
+            });
+        }
+
         // Combat event sync — relay damage/heal/effects to other players
         if (msg.type === 'combat_event' && room.gameStarted && playerEntry.slotId !== null) {
             var ceData = JSON.stringify({

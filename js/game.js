@@ -41,6 +41,7 @@ function init() {
     document.addEventListener('keydown', _startMusicOnClick);
     if (typeof initSidePanelTabs === 'function') initSidePanelTabs();
     if (typeof initAvatarInput === 'function') initAvatarInput();
+    if (typeof initCommandUI === 'function') initCommandUI();
 
     document.getElementById('btn-start').addEventListener('click', function() {
         startNewGame();
@@ -54,6 +55,15 @@ function init() {
     document.getElementById('btn-restart').addEventListener('click', function() {
         hideOverlay('gameover-overlay');
         showOverlay('menu-overlay');
+        // Hide in-game UI elements
+        var hud = document.getElementById('hud');
+        var bench = document.getElementById('bench-panel');
+        var toolbar = document.getElementById('icon-toolbar');
+        var sidePanel = document.getElementById('side-panel');
+        if (hud) hud.classList.remove('active');
+        if (bench) bench.classList.remove('active');
+        if (toolbar) toolbar.classList.remove('active');
+        if (sidePanel) sidePanel.classList.remove('active');
         if (typeof startMenuMusic === 'function') startMenuMusic();
     });
 
@@ -443,13 +453,13 @@ function beginPlanningPhase() {
 
     var hud = document.getElementById('hud');
     var bench = document.getElementById('bench-panel');
-    var side = document.getElementById('side-panel');
+    var toolbar = document.getElementById('icon-toolbar');
     var planningActions = document.getElementById('planning-actions');
     var combatControls = document.getElementById('combat-controls');
 
     if (hud) hud.classList.add('active');
     if (bench) bench.classList.add('active');
-    if (side) side.classList.add('active');
+    if (toolbar) toolbar.classList.add('active');
     if (planningActions) planningActions.classList.add('active');
     if (combatControls) combatControls.classList.remove('active');
 
@@ -463,11 +473,13 @@ function beginPlanningPhase() {
 
     // No timer — combat starts only when player presses "Pronto!"
 
-    // Reset camera to board center (full view of map)
-    if (typeof CAM_PAN_X !== 'undefined') {
-        CAM_PAN_X = 0;
-        CAM_PAN_Z = 0;
-        if (typeof _applyCameraTransform === 'function') _applyCameraTransform();
+    // Pan camera back to player's base (zoomed in on deploy zone)
+    if (typeof panCameraToPlayerBase === 'function') {
+        panCameraToPlayerBase();
+    }
+    // Force tactical view for planning (ortho camera)
+    if (typeof _tacticalView !== 'undefined') {
+        _tacticalView = true;
     }
 }
 
@@ -746,6 +758,8 @@ function beginPvECombat() {
 // =============================================
 function beginCombatPhase() {
     gamePhase = PHASE_COMBAT;
+    // Switch to avatar FPV camera for combat
+    if (typeof _tacticalView !== 'undefined') { _tacticalView = false; }
     // Reset camera snap so it repositions behind avatar each combat
     if (typeof _fpvCamSnapped !== 'undefined') { _fpvCamSnapped = false; }
     playPhaseSound();
@@ -804,8 +818,37 @@ function startCombatAnimation(combatState) {
         u.py = pos.y;
     }
 
+    // Determine if this client is the combat authority (host or single-player)
+    var _isCombatHost = !!(window._singlePlayerMode || typeof lobbyIsHost === 'undefined' || lobbyIsHost);
+
     function _combatTickLoop() {
+        if (!_isCombatHost) {
+            // Non-host: don't run combat tick, just keep the loop alive for render
+            combatAnimInterval = setTimeout(_combatTickLoop, COMBAT_ANIM_TICK_MS / combatSpeedMultiplier);
+            return;
+        }
+
         var result = runCombatTick(teams, grid);
+
+        // HOST: broadcast combat snapshot to server for relay to other clients
+        if (!window._singlePlayerMode && typeof lobbySocket !== 'undefined' && lobbySocket && lobbySocket.readyState === 1) {
+            var snapshot = {
+                type: 'combat_snapshot',
+                tick: typeof combatTick !== 'undefined' ? combatTick : 0,
+                units: combatUnits.map(function(u) {
+                    return {
+                        id: u.id, charId: u.charId, owner: u.owner,
+                        row: u.row, col: u.col,
+                        hp: u.hp, maxHp: u.maxHp,
+                        alive: u.alive,
+                        wx: u._smoothWX, wz: u._smoothWZ
+                    };
+                }),
+                result: result || null
+            };
+            lobbySocket.send(JSON.stringify(snapshot));
+        }
+
         if (result) {
             combatAnimInterval = null;
             combatResult = result;

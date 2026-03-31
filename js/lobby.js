@@ -275,6 +275,67 @@ function _lobConnect(onOpenCallback) {
                 }
             }
 
+            // ════════════════════════════════════════════════════════
+            // COMBAT SNAPSHOT — authoritative state from host
+            // ════════════════════════════════════════════════════════
+            if (msg.type === 'combat_snapshot' && typeof combatUnits !== 'undefined') {
+                var snapUnits = msg.units || [];
+                var mySlot = (window.mySlotId !== null && window.mySlotId !== undefined) ? window.mySlotId : 0;
+
+                // Build lookup: match by owner + charId + index within same owner/charId group
+                var _snapLookup = {};
+                for (var _si = 0; _si < snapUnits.length; _si++) {
+                    var _sk = snapUnits[_si].owner + '|' + snapUnits[_si].charId;
+                    if (!_snapLookup[_sk]) _snapLookup[_sk] = [];
+                    _snapLookup[_sk].push(snapUnits[_si]);
+                }
+                var _localCounts = {};
+                for (var _ci = 0; _ci < combatUnits.length; _ci++) {
+                    var cu = combatUnits[_ci];
+                    var _lk = cu.owner + '|' + cu.charId;
+                    if (!_localCounts[_lk]) _localCounts[_lk] = 0;
+                    var _idx = _localCounts[_lk]++;
+                    var su = _snapLookup[_lk] && _snapLookup[_lk][_idx] ? _snapLookup[_lk][_idx] : null;
+                    if (!su) continue;
+
+                    // Skip local avatar position (controlled by WASD locally)
+                    var isMyAvatar = cu.isAvatar && cu.owner === mySlot;
+                    if (!isMyAvatar) {
+                        cu.row = su.row;
+                        cu.col = su.col;
+                        if (su.wx !== undefined) cu._smoothWX = su.wx;
+                        if (su.wz !== undefined) cu._smoothWZ = su.wz;
+                    }
+
+                    // HP/alive: always apply from host (source of truth)
+                    var prevHp = cu.hp;
+                    var prevAlive = cu.alive;
+                    cu.hp = su.hp;
+                    cu.maxHp = su.maxHp;
+                    cu.alive = su.alive;
+
+                    // VFX for damage taken
+                    if (su.alive && prevHp > su.hp && prevHp - su.hp > 0) {
+                        if (typeof addDamageNumber === 'function') addDamageNumber(cu, prevHp - su.hp, 'physical');
+                    }
+                    // VFX for death
+                    if (prevAlive && !su.alive) {
+                        var _dx = cu._smoothWX !== undefined ? cu._smoothWX : (typeof cellToWorld === 'function' ? cellToWorld(cu.row, cu.col).x : cu.col);
+                        var _dz = cu._smoothWZ !== undefined ? cu._smoothWZ : (typeof cellToWorld === 'function' ? cellToWorld(cu.row, cu.col).z : cu.row);
+                        var _dy = typeof UNIT_BASE_Y !== 'undefined' ? UNIT_BASE_Y : 0.15;
+                        if (typeof _burst3D === 'function') _burst3D(_dx, _dy + 0.3, _dz, 12, '#ff4444', 4.0, 0.35);
+                    }
+                }
+
+                // Handle combat result from host
+                if (msg.result && !combatResult) {
+                    combatResult = msg.result;
+                    setTimeout(function() {
+                        if (typeof beginResultPhase === 'function') beginResultPhase(combatResult);
+                    }, 800);
+                }
+            }
+
             // Remote combat events (damage/heal/effects from other players' avatars)
             if (msg.type === 'combat_event_sync' && typeof combatUnits !== 'undefined') {
                 if (msg.event === 'damage' && msg.targetId !== undefined) {
