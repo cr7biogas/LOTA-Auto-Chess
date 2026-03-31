@@ -400,8 +400,36 @@ wss.on('connection', function(ws) {
                         reconnect: true,
                         slotId: disconnectedPlayer.slotId
                     });
+                    // Send current game state to catch up reconnected player
+                    if (room.gameState) {
+                        safeSend(ws, {
+                            type: 'game_state_sync',
+                            round: room.gameState.round,
+                            phase: room.gameState.phase || 'planning',
+                            players: room.players.map(function(p) {
+                                return { slotId: p.slotId, name: p.name, hp: p.hp,
+                                         gold: p.gold, avatar: p.avatar,
+                                         disconnected: p.disconnected, eliminated: p.eliminated || false };
+                            })
+                        });
+                        // If combat is active, send latest units so client can rebuild
+                        var allUnits = {};
+                        for (var rui = 0; rui < room.players.length; rui++) {
+                            var rp = room.players[rui];
+                            if (rp.slotId !== null && rp.slotId !== undefined) {
+                                allUnits[rp.slotId] = rp.units || [];
+                            }
+                        }
+                        safeSend(ws, {
+                            type: 'start_combat',
+                            round: room.gameState.round,
+                            allUnits: allUnits,
+                            reconnect: true,
+                            dungeonBossKills: room.dungeonBossKills
+                        });
+                    }
                     broadcastLobby(room);
-                    console.log('  [Room ' + code + '] ' + rejoinName + ' reconnected!');
+                    console.log('  [Room ' + code + '] ' + rejoinName + ' reconnected! (catch-up sent)');
                     return;
                 }
                 safeSend(ws, { type: 'error', message: 'La partita e gia iniziata' });

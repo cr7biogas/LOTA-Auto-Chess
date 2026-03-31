@@ -554,8 +554,8 @@ function onPlayerReady() {
     if (typeof lobbySocket !== 'undefined' && lobbySocket && lobbySocket.readyState === 1 && !window._singlePlayerMode) {
         var myPlayer = players[0]; // players[0] is always the local human
 
-        // Serialize own field units + militia + avatar
-        var allMyUnits = (myPlayer.fieldUnits || []).concat(myPlayer.militiaUnits || []);
+        // Serialize own field units + militia + structures + avatar
+        var allMyUnits = (myPlayer.fieldUnits || []).concat(myPlayer.militiaUnits || []).concat(myPlayer.structures || []);
         if (myPlayer.avatar && myPlayer.avatar.alive && !myPlayer.avatar._needsRespawn) {
             allMyUnits.push(myPlayer.avatar);
         }
@@ -564,6 +564,8 @@ function onPlayerReady() {
                      learnedSkills: u.learnedSkills || {}, equippedSkills: u.equippedSkills || [],
                      isAvatar: !!u.isAvatar, avatarClass: u.avatarClass || null,
                      militiaType: u.militiaType || null,
+                     isStructure: !!u.isStructure, structureType: u.structureType || null,
+                     structureCharId: u.structureCharId || null,
                      hp: u.hp, maxHp: u.maxHp, atk: u.atk, armor: u.armor,
                      range: u.range, atkSpeed: u.atkSpeed, level: u.level || 1 };
         });
@@ -609,6 +611,7 @@ function applyServerUnitsAndStartCombat(allUnits) {
         var serverUnits = allUnits[serverSlotStr] || [];
         var remoteFieldUnits = [];
         var remoteMilitia = [];
+        var remoteStructures = [];
         var remoteAvatar = null;
 
         console.log('[MP-DEBUG] Processing slot ' + serverSlot + '→local' + localSlot + ', ' + serverUnits.length + ' units to process');
@@ -627,6 +630,15 @@ function applyServerUnitsAndStartCombat(allUnits) {
                 var avPos = cellToPixel(u.row, u.col);
                 av.px = avPos.x; av.py = avPos.y;
                 remoteAvatar = av;
+            } else if (u.isStructure && u.structureCharId && typeof createStructureUnit === 'function') {
+                var sUnit = createStructureUnit(u.structureCharId, u.structureType, serverSlot, u.row, u.col);
+                if (sUnit) {
+                    sUnit.items = u.items || [];
+                    sUnit.hp = u.hp || sUnit.hp;
+                    var sPos = cellToPixel(u.row, u.col);
+                    sUnit.px = sPos.x; sUnit.py = sPos.y;
+                    remoteStructures.push(sUnit);
+                }
             } else if (u.militiaType) {
                 var mUnit = (typeof createMilitiaUnit === 'function')
                     ? createMilitiaUnit(u.militiaType, serverSlot, u.row, u.col)
@@ -653,6 +665,7 @@ function applyServerUnitsAndStartCombat(allUnits) {
 
         players[localSlot].fieldUnits = remoteFieldUnits;
         if (remoteMilitia.length > 0) players[localSlot].militiaUnits = remoteMilitia;
+        if (remoteStructures.length > 0) players[localSlot].structures = remoteStructures;
         console.log('[MP-DEBUG] Slot ' + serverSlot + '→local' + localSlot + ': ' + serverUnits.length + ' raw, ' + remoteFieldUnits.length + ' field, ' + remoteMilitia.length + ' militia, avatar=' + (remoteAvatar ? remoteAvatar.avatarClass : 'NONE'));
         console.log('[MP-DEBUG] Raw units received:', JSON.stringify(serverUnits.map(function(u){return {charId:u.charId, isAvatar:u.isAvatar, militiaType:u.militiaType, row:u.row, col:u.col};})));
     }
@@ -867,7 +880,14 @@ function startCombatAnimation(combatState) {
                         hp: u.hp, maxHp: u.maxHp,
                         alive: u.alive,
                         wx: u._smoothWX !== undefined ? u._smoothWX : u.wx,
-                        wz: u._smoothWZ !== undefined ? u._smoothWZ : u.wz
+                        wz: u._smoothWZ !== undefined ? u._smoothWZ : u.wz,
+                        shield: u.shield || 0,
+                        targetUnitId: u.targetUnitId || null,
+                        facing: u.facing || 0,
+                        isStopped: !!u.isStopped,
+                        effects: (u.effects && u.effects.length > 0) ? u.effects.map(function(e) {
+                            return { type: e.type, value: e.value || 0, ticksLeft: e.ticksLeft || 0 };
+                        }) : []
                     };
                 }),
                 result: result || null

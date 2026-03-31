@@ -282,20 +282,27 @@ function _lobConnect(onOpenCallback) {
                 var snapUnits = msg.units || [];
                 var mySlot = (window.mySlotId !== null && window.mySlotId !== undefined) ? window.mySlotId : 0;
 
-                // Build lookup: match by owner + charId + index within same owner/charId group
-                var _snapLookup = {};
+                // Build lookup by unit ID for robust matching (fallback to owner+charId+index)
+                var _snapById = {};
+                var _snapByKey = {};
                 for (var _si = 0; _si < snapUnits.length; _si++) {
+                    if (snapUnits[_si].id !== undefined) _snapById[snapUnits[_si].id] = snapUnits[_si];
                     var _sk = snapUnits[_si].owner + '|' + snapUnits[_si].charId;
-                    if (!_snapLookup[_sk]) _snapLookup[_sk] = [];
-                    _snapLookup[_sk].push(snapUnits[_si]);
+                    if (!_snapByKey[_sk]) _snapByKey[_sk] = [];
+                    _snapByKey[_sk].push(snapUnits[_si]);
                 }
                 var _localCounts = {};
                 for (var _ci = 0; _ci < combatUnits.length; _ci++) {
                     var cu = combatUnits[_ci];
-                    var _lk = cu.owner + '|' + cu.charId;
-                    if (!_localCounts[_lk]) _localCounts[_lk] = 0;
-                    var _idx = _localCounts[_lk]++;
-                    var su = _snapLookup[_lk] && _snapLookup[_lk][_idx] ? _snapLookup[_lk][_idx] : null;
+                    // Primary: match by unit ID
+                    var su = _snapById[cu.id] || null;
+                    // Fallback: match by owner+charId+index
+                    if (!su) {
+                        var _lk = cu.owner + '|' + cu.charId;
+                        if (!_localCounts[_lk]) _localCounts[_lk] = 0;
+                        var _idx = _localCounts[_lk]++;
+                        su = _snapByKey[_lk] && _snapByKey[_lk][_idx] ? _snapByKey[_lk][_idx] : null;
+                    }
                     if (!su) continue;
 
                     // Skip local avatar position (controlled by WASD locally)
@@ -314,12 +321,17 @@ function _lobConnect(onOpenCallback) {
                         }
                     }
 
-                    // HP/alive: always apply from host (source of truth)
+                    // HP/alive/shield/effects: always apply from host (source of truth)
                     var prevHp = cu.hp;
                     var prevAlive = cu.alive;
                     cu.hp = su.hp;
                     cu.maxHp = su.maxHp;
                     cu.alive = su.alive;
+                    if (su.shield !== undefined) cu.shield = su.shield;
+                    if (su.targetUnitId !== undefined) cu.targetUnitId = su.targetUnitId;
+                    if (su.facing !== undefined) cu.facing = su.facing;
+                    if (su.isStopped !== undefined) cu.isStopped = su.isStopped;
+                    if (su.effects) cu.effects = su.effects;
 
                     // VFX for damage taken
                     if (su.alive && prevHp > su.hp && prevHp - su.hp > 0) {
