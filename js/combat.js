@@ -1275,13 +1275,6 @@ function initCombat(playersList, creepUnits, campCreeps) {
         }
     }
 
-    // Debug: log team sizes and per-player unit counts
-    for (var tk in teams) { console.log('[MP-DEBUG] initCombat team ' + tk + ': ' + teams[tk].length + ' units → ' + teams[tk].map(function(u){return u.charId + (u.isAvatar?'(AV)':'');}).join(', ')); }
-    for (var _dp = 0; _dp < playersList.length; _dp++) {
-        var _dpl = playersList[_dp];
-        console.log('[MP-DEBUG] player[' + _dp + '] ' + _dpl.name + ': field=' + (_dpl.fieldUnits||[]).length + ' militia=' + (_dpl.militiaUnits||[]).length + ' avatar=' + (_dpl.avatar ? _dpl.avatar.avatarClass : 'NONE') + ' eliminated=' + _dpl.eliminated + ' isHuman=' + _dpl.isHuman + ' serverSlot=' + _dpl.serverSlot);
-    }
-
     // Add creep units if PvE
     if (creepUnits && creepUnits.length > 0) {
         teams['creep'] = [];

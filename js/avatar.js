@@ -152,6 +152,13 @@ function grantAvatarXP(avatar, amount) {
         _applyAvatarLevelUp(avatar);
         leveledUp = true;
     }
+    // Broadcast level-up to other players
+    if (leveledUp && typeof _mpSend === 'function') {
+        _mpSend({
+            type: 'combat_event', event: 'avatar_levelup',
+            level: avatar.level, maxHp: avatar.maxHp, atk: avatar.atk, armor: avatar.armor
+        });
+    }
     return leveledUp;
 }
 
@@ -813,6 +820,8 @@ function avatarCastAbility(slot) {
 
     if (typeof combatTeams !== 'undefined' && typeof combatUnits !== 'undefined') {
         executeAvatarAbility(av, ab.id, combatUnits, combatTeams, null);
+        // Sync ability cast to other players
+        if (typeof _mpSyncAbility === 'function') _mpSyncAbility(ab.id, []);
     }
 }
 

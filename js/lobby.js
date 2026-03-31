@@ -395,6 +395,35 @@ function _lobConnect(onOpenCallback) {
                             break;
                         }
                     }
+                } else if (msg.event === 'ability' && msg.fromSlot !== undefined) {
+                    // Remote avatar ability cast — trigger VFX on caster
+                    for (var _cai = 0; _cai < combatUnits.length; _cai++) {
+                        if (combatUnits[_cai].isAvatar && combatUnits[_cai].owner === msg.fromSlot) {
+                            var _caster = combatUnits[_cai];
+                            var _cwx = _caster._smoothWX !== undefined ? _caster._smoothWX : (_caster.wx || 0);
+                            var _cwz = _caster._smoothWZ !== undefined ? _caster._smoothWZ : (_caster.wz || 0);
+                            var _cwy = typeof UNIT_BASE_Y !== 'undefined' ? UNIT_BASE_Y : 0.15;
+                            if (typeof _burst3D === 'function') _burst3D(_cwx, _cwy + 0.5, _cwz, 8, '#a78bfa', 4.0, 0.30);
+                            if (typeof _ring3D === 'function') _ring3D(_cwx, _cwy + 0.1, _cwz, 0.5, '#7c3aed', 12, 0.25);
+                            break;
+                        }
+                    }
+                } else if (msg.event === 'avatar_levelup' && msg.fromSlot !== undefined) {
+                    // Remote avatar leveled up — update stats
+                    for (var _cli = 0; _cli < combatUnits.length; _cli++) {
+                        if (combatUnits[_cli].isAvatar && combatUnits[_cli].owner === msg.fromSlot) {
+                            if (msg.level) combatUnits[_cli].level = msg.level;
+                            if (msg.maxHp) { combatUnits[_cli].maxHp = msg.maxHp; combatUnits[_cli].hp = Math.min(combatUnits[_cli].hp, msg.maxHp); }
+                            if (msg.atk) combatUnits[_cli].atk = msg.atk;
+                            if (msg.armor) combatUnits[_cli].armor = msg.armor;
+                            // Level-up VFX
+                            var _lwx = combatUnits[_cli]._smoothWX !== undefined ? combatUnits[_cli]._smoothWX : (combatUnits[_cli].wx || 0);
+                            var _lwz = combatUnits[_cli]._smoothWZ !== undefined ? combatUnits[_cli]._smoothWZ : (combatUnits[_cli].wz || 0);
+                            var _lwy = typeof UNIT_BASE_Y !== 'undefined' ? UNIT_BASE_Y : 0.15;
+                            if (typeof _rising3D === 'function') _rising3D(_lwx, _lwy, _lwz, 8, '#fbbf24', 0.6);
+                            break;
+                        }
+                    }
                 }
             }
 

@@ -570,8 +570,14 @@ wss.on('connection', function(ws) {
 
             playerEntry.roundReady = true;
             if (msg.units) {
-                playerEntry.units = msg.units;
-                room.gameState.placements[playerEntry.slotId] = msg.units;
+                // Validate units array
+                var validUnits = msg.units;
+                if (validUnits.length > 25) {
+                    console.warn('  [Room ' + room.code + '] Too many units from ' + playerEntry.name + ' (' + validUnits.length + '), truncating');
+                    validUnits = validUnits.slice(0, 25);
+                }
+                playerEntry.units = validUnits;
+                room.gameState.placements[playerEntry.slotId] = validUnits;
             }
             console.log('  [Room ' + room.code + '] ' + playerEntry.name + ' pronto (slot ' + playerEntry.slotId + ')');
             checkAllPlayersReady(room);
