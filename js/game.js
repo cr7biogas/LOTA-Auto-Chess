@@ -866,7 +866,8 @@ function startCombatAnimation(combatState) {
                         row: u.row, col: u.col,
                         hp: u.hp, maxHp: u.maxHp,
                         alive: u.alive,
-                        wx: u._smoothWX, wz: u._smoothWZ
+                        wx: u._smoothWX !== undefined ? u._smoothWX : u.wx,
+                        wz: u._smoothWZ !== undefined ? u._smoothWZ : u.wz
                     };
                 }),
                 result: result || null

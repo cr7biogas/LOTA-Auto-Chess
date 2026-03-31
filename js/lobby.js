@@ -303,8 +303,15 @@ function _lobConnect(onOpenCallback) {
                     if (!isMyAvatar) {
                         cu.row = su.row;
                         cu.col = su.col;
-                        if (su.wx !== undefined) cu._smoothWX = su.wx;
-                        if (su.wz !== undefined) cu._smoothWZ = su.wz;
+                        // Update world coordinates for all units (heroes use wx/wz, avatars use _smoothWX/WZ)
+                        if (su.wx !== undefined) {
+                            cu.wx = su.wx;
+                            cu._smoothWX = su.wx;
+                        }
+                        if (su.wz !== undefined) {
+                            cu.wz = su.wz;
+                            cu._smoothWZ = su.wz;
+                        }
                     }
 
                     // HP/alive: always apply from host (source of truth)
