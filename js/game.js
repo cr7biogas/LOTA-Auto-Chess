@@ -626,13 +626,19 @@ function applyServerUnitsAndStartCombat(allUnits) {
                 av.px = avPos.x; av.py = avPos.y;
                 remoteAvatar = av;
             } else if (u.militiaType) {
-                var mUnit = createUnit(u.charId, u.star, serverSlot, u.row, u.col);
-                mUnit.militiaType = u.militiaType;
+                var mUnit = (typeof createMilitiaUnit === 'function')
+                    ? createMilitiaUnit(u.militiaType, serverSlot, u.row, u.col)
+                    : null;
+                if (!mUnit) continue; // skip unknown militia type
                 mUnit.items = u.items || [];
                 var mPos = cellToPixel(u.row, u.col);
                 mUnit.px = mPos.x; mUnit.py = mPos.y;
                 remoteMilitia.push(mUnit);
             } else {
+                if (!CHARACTERS[u.charId]) {
+                    console.warn('[MP] Unknown charId: ' + u.charId + ', skipping');
+                    continue;
+                }
                 var unit = createUnit(u.charId, u.star, serverSlot, u.row, u.col);
                 unit.items = u.items || [];
                 if (u.learnedSkills) unit.learnedSkills = u.learnedSkills;
