@@ -62,7 +62,7 @@ const CRIT_MULTIPLIER = 2.0;
 const MISS_CHANCE = 0.05;
 const DAMAGE_VARIANCE = 0.15;
 const TICK_DURATION_S = 1.0;
-const MAX_TICKS = 40;
+const MAX_TICKS = 100;
 const ARMOR_K = 50;
 
 // --- Free movement ---
